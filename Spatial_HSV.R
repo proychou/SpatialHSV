@@ -31,7 +31,7 @@ get_default_settings<-function(){
 	settings<-list(L=200);                          #Specify grid dimensions
 	settings$dirname<-'Results/';   								#Directory to store results
 	settings$out_fname<-'results.out';							#File to store cell and virus counts
-	settings$sim_length<-5*24;											#Length of simulation in hours
+	settings$sim_length<-5;											#Length of simulation in hours
 	settings$save_grids<-TRUE;          #Save grids at the end of the sim? 
 	
 	#Visualization
@@ -40,7 +40,7 @@ get_default_settings<-function(){
 	                      'peachpuff2','orange','turquoise4');                     #5=extra col, 6=extra col, 7=extra col 
 	settings$col_tcells<-c('grey95','forestgreen','deeppink','black',
 	                       'green','khaki1','blue');#Vacant, TRM, TEM, dead cell, T-cell + cytokine, no T-cell+cytokine, and an extra colour
-	settings$refr_freq<-24;												#Refresh frequency (hrs)
+	settings$refr_freq<-25;												#Refresh frequency (hrs)
 	settings$site_scale<-50; #how many microns is one site
 	
 	#Place virus
@@ -61,7 +61,7 @@ get_default_parameters<-function(){
 	parameters<-list(); 
 	
 	#Rates (per site or cell per day)
-	parameters$max_rate<-24;						  #Sets time resolution, should be greater than or equal to sum of all rates for a given state
+	parameters$max_rate<-25;						  #Sets time resolution, should be greater than or equal to sum of all rates for a given state
 	
 	#Uninfected cells
 	parameters$uninf_cell_death<-0;	#Rate of uninfected cell death 
@@ -126,7 +126,7 @@ init_grid<-function(settings,parameters){
 	print('Starting simulation.. hold on to your hat!');
 
 	#Compute simulation length in number of updates
-	settings$tot_updates<-settings$sim_length*parameters$max_rate/24;
+	settings$tot_updates<-settings$sim_length*parameters$max_rate;
 	
 	#Create arrays
 	cell_state<<-array(data=as.integer(0),dim=c(settings$L,settings$L));
@@ -144,7 +144,7 @@ init_grid<-function(settings,parameters){
 	#Dynamic variables - this stores time elapsed and population counts
 	dynamic<<-list(num_updates=0,time=0,
 				   susceptible_cells=0,infected_nonprodcells=0,infected_prodcells=0,dead_cells=0,
-				   virions=0,trm=0,tem=0,dead_tcells=0,cytokine=0);
+				   virions=0,trm=0,tem=0,dead_tcells=0,cytokine=0,max_vl=0,max_vl_time=0,viral_cells=0,cyto_cells=0);
 	output_results(settings,dynamic,T); #write header
 	
 	#Load T-cell movement function based on setting
@@ -185,7 +185,7 @@ simulation<-function(settings,parameters){
 	if(settings$visualize!='off'){
 		visualize(settings); 
 	}
-	next_screen_grab<-dynamic$num_updates+settings$refr_freq*parameters$max_rate/24;
+	next_screen_grab<-dynamic$num_updates+settings$refr_freq;
 	
 	while(dynamic$num_updates<settings$tot_updates){
 		
@@ -241,7 +241,7 @@ simulation<-function(settings,parameters){
 				if(t_cell_state[i,j]==0||t_cell_state[i,j]==3){
 			
 					#TEM arrives from LN (trafficking) if inf cell in detection nbhd
-					if(dynamic$time>(24/parameters$tem_delay)&&(
+					if(dynamic$time>(1/parameters$tem_delay)&&(
 					   (detect_inf(settings,parameters$tcell_detection_range,i,j,what='inf')&&
 					    dice_t<=parameters$tem_trafficking/parameters$max_rate)||
 					   (detect_inf(settings,parameters$tcell_detection_range,i,j,what='t_cell')&&
@@ -430,11 +430,13 @@ simulation<-function(settings,parameters){
 		
 		if(settings$visualize!='off'&&dynamic$num_updates==next_screen_grab){
 			visualize(settings);
-			next_screen_grab<-dynamic$num_updates+settings$refr_freq*parameters$max_rate/24;
+			next_screen_grab<-dynamic$num_updates+settings$refr_freq;
 		}
 		output_results(settings,results,F);
-		if(dynamic$virions==0&&parameters$neur_drip==0&&dynamic$time>5){
-		  end_simulation(settings,parameters); #quit if there is no virus
+		if(dynamic$susceptible_cells==0 ||
+		   (dynamic$virions==0&&parameters$neur_drip==0&&
+		   dynamic$infected_nonprodcells==0&&dynamic$infected_prodcells==0)){
+		  #quit if there is no possibility of virus or targets exhausted
 		  break()
 		}
 	}
@@ -866,7 +868,7 @@ output_results<-function(settings,results,header){
 
 # Compute totals of cells and virus
 compute_totals<-function(dynamic,parameters){
-	dynamic$time<<-dynamic$num_updates*24/parameters$max_rate;
+	dynamic$time<<-dynamic$num_updates/parameters$max_rate;
 	dynamic$virions<<-sum(sum(free_virus));
 	dynamic$susceptible_cells<<-sum(cell_state==1);
 	dynamic$infected_nonprodcells<<-sum(cell_state==2);
@@ -876,6 +878,12 @@ compute_totals<-function(dynamic,parameters){
 	dynamic$tem<<-sum(t_cell_state==2);
 	dynamic$dead_tcells<<-sum(t_cell_state==3);
 	dynamic$cytokine<<-sum(cytokine);
+	dynamic$viral_cells<<-sum(free_virus>0);
+	dynamic$cyto_cells<<-sum(cytokine>0);
+	if (dynamic$virions > dynamic$max_vl) {
+	    dynamic$max_vl <<-  dynamic$virions;
+	    dynamic$max_vl_time <<-  dynamic$time;
+	}
 }
 
 #END of simulation - save grids
@@ -890,7 +898,7 @@ end_simulation<-function(settings,parameters){
 	if(settings$visualize=='pdf'){
 	    dev.off();
 	}
-	print('End of simulation. So long and thanks for all the fish...')
+	print(paste("Highest log VL",ifelse(dynamic$max_vl>0,log10(dynamic$max_vl),0),"at t=",dynamic$max_vl_time));
+	print(paste("End of simulation at t=",dynamic$time));
+	#print('End of simulation. So long and thanks for all the fish...')
 }
-
-
