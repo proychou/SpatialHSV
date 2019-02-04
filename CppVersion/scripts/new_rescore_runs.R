@@ -45,7 +45,7 @@ k<-as.numeric(args[13])
 
 write("model,k,log beta,log viral prod,log viral diff,log cyto diff,log cyto uptake,log inf ic50,log beta ic50,log prod ic50,log cyt_trm_ic50,cyt_inf_death,hsv_fract,peak VL RSS,peak VL AIC,peak time RSS,peak time AIC,duration RSS,duration AIC,cat2 RSS,cat2 AIC,cat3 RSS,cat3 AIC", file="scores.csv",append=FALSE)
 
-cen_data <- read.csv("../trial_data/hsv_cen_episodes.csv", comment.char="#")
+cen_data <- read.csv("../../trial_data/hsv_cen_episodes.csv", comment.char="#")
 #Episode,ID,duration,peak log VL,peak time,first pos VL,mean log VL
 x=colnames(cen_data)
 base_peak<-sort(as.numeric(cen_data[,4]),decreasing=TRUE)

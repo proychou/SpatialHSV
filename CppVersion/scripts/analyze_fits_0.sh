@@ -19,10 +19,10 @@ foreach thisdir ( final_fit_[1-9]0 final_fit_[1-9]0[0-9] final_fit_[1-9][0-9]0[0
 	setenv cyt_inf_death `grep cyt_effect_infncelldeath *.in|tail -n 1 | awk '{print $2;}'`
 	setenv hsv_fract `grep hsv_fract *.in|tail -n 1 | awk '{print $2;}'`
 
-	Rscript ../char_final.R $beta $viral_prod $viral_diff $cyt_diff $cyt_uptake $beta_ic50 $inf_ic50 $prod_ic50 $scale $cyt_trm_ic50 $cyt_inf_death $hsv_fract
+	Rscript ../../scripts/char_final.R $beta $viral_prod $viral_diff $cyt_diff $cyt_uptake $beta_ic50 $inf_ic50 $prod_ic50 $scale $cyt_trm_ic50 $cyt_inf_death $hsv_fract
 	head -n 84 all_episodes.csv > temp_episodes.csv
 	mv temp_episodes.csv all_episodes.csv
-	Rscript ../new_rescore_runs.R $beta $viral_prod $viral_diff $cyt_diff $cyt_uptake $beta_ic50 $inf_ic50 $prod_ic50 $scale $cyt_trm_ic50 $cyt_inf_death $model $k $hsv_fract
+	Rscript ../../scripts/new_rescore_runs.R $beta $viral_prod $viral_diff $cyt_diff $cyt_uptake $beta_ic50 $inf_ic50 $prod_ic50 $scale $cyt_trm_ic50 $cyt_inf_death $model $k $hsv_fract
     else
 	echo "Skipped" > /dev/stderr
 	touch scores.csv

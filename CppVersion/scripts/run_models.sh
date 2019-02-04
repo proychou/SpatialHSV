@@ -150,7 +150,7 @@ do
     ../scripts/copy_overall_files.sh $model $top_run
 
     echo "Saving interim result directories for model $model" >> model_fitting.log
-    tar -cvzf big_fitting_dirs_model$model\.tar.gz final_fit_[1-9]*/all_episodes.csv final_fit_[1-9]*/fitting.in final_fit_[1-9]*/results.csv
+    tar -cvzf fitting_dirs_model$model\.tar.gz final_fit_[1-9]*/all_episodes.csv final_fit_[1-9]*/fitting.in final_fit_[1-9]*/results.csv
 
     echo "Removing interim result directories for model $model" >> model_fitting.log
     rm -r final_fit_[1-9]*
