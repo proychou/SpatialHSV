@@ -35,7 +35,7 @@ do
     fi
     cd $thisdir
     cp ../fitting.in .
-    sbatch -n 1 -t 1:00:00 ../run_fits.pl fitting.in $model
+    sbatch -n 1 -t 1:00:00 ../../scripts/run_fits.pl fitting.in $model
     cd ..
 
     sets=`expr $sets - 1`

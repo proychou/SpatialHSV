@@ -88,7 +88,7 @@ fi
 rm -f model_fitting.log
 while [ $sets -gt 0 ]
 do
-    cp base_fitting.in ic50_fitting.in
+    cp base_fitting.in fitting.in
     echo -n "Launching simulations for model $model at " >> model_fitting.log
     date >> model_fitting.log
     #baseline
@@ -116,7 +116,7 @@ do
     then
 	k=6
     fi
-    ./run_final.sh $model $runs
+    ../scripts/run_final.sh $model $runs
     sleep 60
     running=`squeue -u dswan | wc -l`
     while [ $running -gt 1 ]
@@ -129,29 +129,29 @@ do
     done
     echo -n "Analyzing result files at " >> model_fitting.log
     date >> model_fitting.log
-    ./analyze_ic50_types.sh 5 $model $k
+    ../scripts/analyze_fits.sh 1 $model $k
     sleep 60
-    missing=`./find_missing_scores.sh | wc -l`
+    missing=`../scripts/find_missing_scores.sh | wc -l`
     while [ $missing -gt 1 ]
     do
 	echo -n "Waiting for $missing scores to complete at " >> model_fitting.log
 	date >> model_fitting.log
 	sleep 300
-	missing=`./find_missing_scores.sh | wc -l`
+	missing=`../scripts/find_missing_scores.sh | wc -l`
     done
     echo -n "Waiting for final scoring to complete at " >> model_fitting.log
     date >> model_fitting.log
     sleep 60
     echo -n "Combining run scores at " >> model_fitting.log
     date >> model_fitting.log
-    ./combo_all_cats.sh
+    ../scripts/combo_all_cats.sh
     echo -n "Copying scoring files at " >> model_fitting.log
     date >> model_fitting.log
-    top_run=`./get_top_run.sh`
-    ./copy_overall_files.sh $model $top_run
+    top_run=`../scripts/get_top_run.sh`
+    ../scripts/copy_overall_files.sh $model $top_run
 
     echo "Saving interim result directories for model $model" >> model_fitting.log
-    tar -cvzf big_fitting_dirs_model$model\.tar.gz final_fit_[1-9]*/all_episodes.csv final_fit_[1-9]*/ic50_fitting.in final_fit_[1-9]*/results.csv
+    tar -cvzf big_fitting_dirs_model$model\.tar.gz final_fit_[1-9]*/all_episodes.csv final_fit_[1-9]*/fitting.in final_fit_[1-9]*/results.csv
 
     echo "Removing interim result directories for model $model" >> model_fitting.log
     rm -r final_fit_[1-9]*

@@ -87,26 +87,26 @@ do
 	k=6
     fi
     echo "Reanalyzing & scoring sim data for $model" >> model_fitting.log
-    ./analyze_ic50_types.sh 1 $model $k
+    ../scripts/analyze_fits.sh 1 $model $k
     sleep 60
-    missing=`./find_missing_scores.sh | wc -l`
+    missing=`../scripts/find_missing_scores.sh | wc -l`
     while [ $missing -gt 1 ]
     do
 	echo -n "Waiting for $missing scores to complete at " >> model_fitting.log
 	date >> model_fitting.log
 	sleep 120
-	missing=`./find_missing_scores.sh | wc -l`
+	missing=`../scripts/find_missing_scores.sh | wc -l`
     done
     echo -n "Waiting for final scoring to complete at " >> model_fitting.log
     date >> model_fitting.log
     sleep 60
     echo -n "Combining run scores at " >> model_fitting.log
     date >> model_fitting.log
-    ./combo_all_cats.sh
+    ../scripts/combo_all_cats.sh
     echo -n "Copying scoring files at " >> model_fitting.log
     date >> model_fitting.log
-    top_run=`./get_top_run.sh`
-    ./copy_overall_files.sh $model $top_run
+    top_run=`../scripts/get_top_run.sh`
+    ../scripts/copy_overall_files.sh $model $top_run
 
     echo "Removing interim result directories for model $model" >> model_fitting.log
     rm -r final_fit_[1-9]*
