@@ -88,7 +88,6 @@ fi
 rm -f model_fitting.log
 while [ $sets -gt 0 ]
 do
-    cp base_fitting.in fitting.in
     echo -n "Launching simulations for model $model at " >> model_fitting.log
     date >> model_fitting.log
     #baseline
