@@ -56,6 +56,8 @@ using namespace std;
 #define NORMAL 2
 #define LOGNORMAL 3
 #define POLYNOMIAL 4
+#define POWER_LAW 5
+#define EXPONENTIAL 6
 
 #define NO_VIRUS 0
 #define SINGLE_POINT 1
@@ -93,6 +95,7 @@ using namespace std;
 
 #define MAX_LINE 80
 #define MAX_ET_ENTRIES 2000
+#define MAX_CLUSTERS 100
 
 // Macros for looking for various input file variables
 #define CHECK_FOR_SETTING(name,param) \
@@ -178,6 +181,9 @@ void read_input_file(char *inp_file, global_settings *settings, global_parameter
     CHECK_FOR_INT_SETTING("trm_move_method",trm_move_method);
     CHECK_FOR_INT_SETTING("trm_random_gaussian",trm_random_gaussian);
 
+    CHECK_FOR_INT_SETTING("add_cd4s",add_cd4s);
+    CHECK_FOR_SETTING("cd4_to_cd8_ratio",cd4_to_cd8_ratio);
+
     CHECK_FOR_INT_SETTING("cyto_act",cyto_act);
     CHECK_FOR_INT_SETTING("cyto_act_cyto",cyto_act_cyto);
     CHECK_FOR_INT_SETTING("cyto_act_prolif",cyto_act_prolif);
@@ -198,16 +204,24 @@ void read_input_file(char *inp_file, global_settings *settings, global_parameter
     CHECK_FOR_SETTING("et_ratio_p_c",et_ratio_p_c);
     CHECK_FOR_SETTING("et_ratio_p_d",et_ratio_p_d);
 
+    CHECK_FOR_SETTING("et_ratio_p_max",et_ratio_p_max);
+    CHECK_FOR_SETTING("et_ratio_p_min",et_ratio_p_min);
     CHECK_FOR_SETTING("et_ratio_p_mean",et_ratio_p_mean);
     CHECK_FOR_SETTING("et_ratio_p_std",et_ratio_p_std);
     CHECK_FOR_SETTING("et_ratio_p_k",et_ratio_p_k);
 
+    CHECK_FOR_SETTING("et_ratio_c_max",et_ratio_c_max);
+    CHECK_FOR_SETTING("et_ratio_c_min",et_ratio_c_min);
     CHECK_FOR_SETTING("et_ratio_c_mean",et_ratio_c_mean);
     CHECK_FOR_SETTING("et_ratio_c_std",et_ratio_c_std);
     CHECK_FOR_SETTING("et_ratio_c_k",et_ratio_c_k);
 
     CHECK_FOR_SETTING("et_ratio_c_a",et_ratio_c_a);
     CHECK_FOR_SETTING("et_ratio_c_b",et_ratio_c_b);
+
+    CHECK_FOR_INT_SETTING("et_cluster_size",et_cluster_size);
+    CHECK_FOR_INT_SETTING("et_num_clusters",et_num_clusters);
+    CHECK_FOR_INT_SETTING("et_num_samples",et_num_samples);
 
     //check for parameters in the file:
     CHECK_FOR_INT_PARAMETER("max_rate",max_rate);
@@ -223,7 +237,13 @@ void read_input_file(char *inp_file, global_settings *settings, global_parameter
     CHECK_FOR_PARAMETER("trm_decay",trm_decay);
     CHECK_FOR_PARAMETER("trm_conv_rate",trm_conv_rate);
     CHECK_FOR_PARAMETER("trm_dbl",trm_dbl);
+    CHECK_FOR_PARAMETER("tem_trafficking",tem_trafficking);
+    CHECK_FOR_PARAMETER("tem_exiting",tem_exiting);
+    CHECK_FOR_PARAMETER("tem_delay",tem_delay);
+
     CHECK_FOR_PARAMETER("hsv_fract",hsv_fract);
+    CHECK_FOR_PARAMETER("psi",psi);
+
     CHECK_FOR_PARAMETER("tcell_killing_rate",tcell_killing_rate);
     CHECK_FOR_PARAMETER("trm_motility",trm_motility);
     CHECK_FOR_PARAMETER("trm_levy_alpha",trm_levy_alpha);
@@ -417,7 +437,7 @@ int main(int argc, char **argv){
 
     alloc_grid(&settings,&dynamics);
 
-    output_results(dynamics.runnum,&settings,&dynamics,true);
+    output_results(dynamics.runnum,&settings,&parameters,&dynamics,true);
     while (dynamics.runnum < settings.Runs) {
 	init_grid(dynamics.runnum+1,&settings,&parameters,&dynamics);
 
@@ -475,12 +495,20 @@ void set_default_settings(global_settings *settings){
 	settings->trm_move_method=RANDOM; //random', 'directed' or 'levy'
 	settings->trm_random_gaussian=1; //random center for gaussian distribution
 
+	settings->add_cd4s=1;  // adding in CD4s as BYST
+	settings->cd4_to_cd8_ratio=0.333; // this is 1:3 from histologies
+
 	settings->cyto_act=0;
 	settings->cyto_act_cyto=1;
 	settings->cyto_act_prolif=1;
 
 	settings->et_ratio_function=POLYNOMIAL;
+	settings->et_cluster_size = 100;
+	settings->et_num_clusters = MAX_CLUSTERS;
+	settings->et_num_samples = 18;
 
+	settings->et_ratio_p_max = 2;
+	settings->et_ratio_p_min = 0.1;
 	settings->et_ratio_p_mean = 0.293835;
 	settings->et_ratio_p_std = 0.2770515;
 	settings->et_ratio_p_k = 1.9028157;
@@ -494,13 +522,28 @@ void set_default_settings(global_settings *settings){
 	    settings->et_ratio_p_b = 0.0214;
 	    settings->et_ratio_p_c = -0.2751;
 	    settings->et_ratio_p_d = 1.3136;
+	} else if (settings->et_ratio_function == POWER_LAW) {
+	    settings->et_ratio_p_a = -0.0005;
+	    settings->et_ratio_p_b = 0.0214;
+	} else if (settings->et_ratio_function == EXPONENTIAL) {
+	    settings->et_ratio_p_a = 1.1542;
+	    settings->et_ratio_p_b = -0.14;
 	}
 
+	settings->et_ratio_c_max = -0.01;
+	settings->et_ratio_c_min = -0.2;
 	settings->et_ratio_c_mean = -0.09565;
 	settings->et_ratio_c_std = 0.0307969;
 	settings->et_ratio_c_k = 0.5686187;
-	settings->et_ratio_c_a = 0.0265;
-	settings->et_ratio_c_b = -0.1034;
+
+	// C must be pulled then negated if not from a normal dist!
+	if (settings->et_ratio_function == POWER_LAW) {
+	    settings->et_ratio_c_a = 0.0265;
+	    settings->et_ratio_c_b = -0.1034;
+	} else if (settings->et_ratio_function == EXPONENTIAL) {
+	    settings->et_ratio_c_a = 0.206;
+	    settings->et_ratio_c_b = -0.04;
+	}
 }
 
 // 1b. Get default values for parameters  (can be overriden in input file)
@@ -562,6 +605,13 @@ void set_default_parameters(global_parameters *parameters){
 	parameters->limit_cyt_spread=0;
 
 	parameters->cyt_prot_expiration=1;
+
+	parameters->hsv_fract=0.4;
+	parameters->psi=1;
+
+	parameters->tem_trafficking=0;	//Rate of arrival of TEM from LN (per site per day)
+	parameters->tem_exiting=100;	//Rate of exit of TEM from tissue
+	parameters->tem_delay=1;      //Delay in the arrival of TEM (per day, default = 1 = 24h delay)
 }
 
 
@@ -778,6 +828,9 @@ void clear_counts(global_settings *settings,global_parameters *parameters,global
 	dynamics->trm_kills=0;
 	dynamics->trm_act_time=1000;
 	dynamics->trm_cyt_time=1000;
+	dynamics->hsv_tems=0;
+	dynamics->byst_tems=0;
+	dynamics->tem_exits=0;
 }
 
 // clear deltas associated with a new time step (applied together at end of the step)
@@ -809,6 +862,7 @@ void propagate_deltas(global_settings *settings,global_dynamics *dynamics) {
 //Effect of cytokine_matrix-based activation given conc of cytokine_matrix at site (pg/ml). In previous version, xmid and scal were estimated from Jia's experiments (see folder IFNG_jia) and multiplied to convert from units/ml to pg/cell
 // This was changed to use an untuned version that allowed for varying IC50s to be tried (rather than tuned one)
 
+// NOTE: the cytokine effect is a reductive effect (1 w/ no cytokine, 0 at highest
 double new_cyt_effect(double dose, double cyt_ic50){
     return 1.0 /(1.0 + dose/cyt_ic50);
 }
@@ -883,9 +937,9 @@ void place_tcells(global_settings *settings, global_parameters *parameters, glob
     if(parameters->tcell_density>0){
 
       // Option 1: draw et_ratio p & c from distributions then calculate 
-      // for each of 40 clusters based on rank order
+      // for each of the clusters based on rank order
       if(settings->trm_init==DRAWN){
-	double et_array[40];
+	double et_array[MAX_CLUSTERS];
 	double et_dist_p;
 	double et_dist_c;
 
@@ -896,74 +950,164 @@ void place_tcells(global_settings *settings, global_parameters *parameters, glob
 	} else if (settings->et_ratio_function == NORMAL) {
 	    et_dist_p = settings->et_ratio_p_mean + gsl_ran_gaussian(settings->ur,settings->et_ratio_p_std);
 	} else if (settings->et_ratio_function == LOGNORMAL) {
-	    int picked = 1 + gsl_rng_uniform_int(settings->ur,20);
+	    // p = a * ln(x) + b;
+	    int picked = 1 + gsl_rng_uniform_int(settings->ur,18);
 	    et_dist_p = settings->et_ratio_p_a * log(picked) + settings->et_ratio_p_b;
 	} else if (settings->et_ratio_function == POLYNOMIAL) {
-	    int picked = 1 + gsl_rng_uniform_int(settings->ur,20);
+	    int picked = 1 + gsl_rng_uniform_int(settings->ur,18);
+	    // p = a*x^3 + b*x^2 + c*x + d;
 	    et_dist_p = settings->et_ratio_p_a * picked *picked * picked +
 			settings->et_ratio_p_b * picked * picked +
 			settings->et_ratio_p_c * picked + settings->et_ratio_p_d;
+	} else if (settings->et_ratio_function == POWER_LAW) {
+	    // p = a * x^b;
+	    int picked = 1 + gsl_rng_uniform_int(settings->ur,18);
+	    et_dist_p = settings->et_ratio_p_a * pow(picked,settings->et_ratio_p_b);
+	} else if (settings->et_ratio_function == EXPONENTIAL) {
+	    // p = a * e^bx;
+	    int picked = 1 + gsl_rng_uniform_int(settings->ur,18);
+	    et_dist_p = settings->et_ratio_p_a * pow(M_E,picked*settings->et_ratio_p_b);
 	}
-	// always pull c from a normal dist, but with a negative sign
-	et_dist_c = (settings->et_ratio_c_mean + gsl_ran_gaussian(settings->ur,settings->et_ratio_c_std));
+	// always pull c from a dist, (but with a negative sign if power law)
+	if (settings->et_ratio_function == POWER_LAW) {
+	    // c = - (a * x^b);
+	    int picked = 1 + gsl_rng_uniform_int(settings->ur,18);
+	    et_dist_c = -settings->et_ratio_c_a * pow(picked,settings->et_ratio_c_b);
+	} else if (settings->et_ratio_function == EXPONENTIAL) {
+	    // c = -a * e^bx;
+	    int picked = 1 + gsl_rng_uniform_int(settings->ur,18);
+	    et_dist_c = -settings->et_ratio_c_a * pow(M_E,picked*settings->et_ratio_c_b);
+	} else
+	    et_dist_c = (settings->et_ratio_c_mean + gsl_ran_gaussian(settings->ur,settings->et_ratio_c_std));
+
+	if (et_dist_p > settings->et_ratio_p_max)
+	    et_dist_p = settings->et_ratio_p_max;
+	if (et_dist_p < settings->et_ratio_p_min)
+	    et_dist_p = settings->et_ratio_p_min;
+
+	if (et_dist_c > settings->et_ratio_c_max)
+	    et_dist_c = settings->et_ratio_c_max;
+	if (et_dist_c < settings->et_ratio_c_min)
+	    et_dist_c = settings->et_ratio_c_min;
+
     fprintf(stderr,
-	      "Calculating 40 E/T ratios where p=%lf & c=%lf\n",
-	      et_dist_p,et_dist_c);
+	      "Calculating %d E/T ratios where p=%lf & c=%lf\n",
+	      settings->et_num_clusters,et_dist_p,et_dist_c);
 
 	double min_val=1;
 	double max_val=0;
 	double avg_val=0;
-	for (int cluster=0; cluster < 40; cluster++) {
-	  et_array[cluster] = et_dist_p * pow(M_E,et_dist_c*(cluster+1));
-	  if (et_array[cluster] == 0)
-	      zeros++;
-	  if (et_array[cluster] < min_val)
-	      min_val=et_array[cluster];
-	  if (et_array[cluster] > max_val)
-	      max_val=et_array[cluster];
+
+	int zero_clusters = settings->et_num_clusters*FRACT_W_ZEROS;
+	int et_num_clusters=settings->et_num_clusters;
+	int early_zero=0;
+
+	for (int cluster=0; cluster < et_num_clusters; cluster++) {
+	  if (cluster < et_num_clusters - zero_clusters)
+	  {
+	      et_array[cluster] = et_dist_p * pow(M_E,et_dist_c*(cluster+1));
+	      if (early_zero == 0 && 
+		  et_array[cluster] * settings->et_cluster_size < 1)
+	      {
+		et_array[cluster] = 0;
+		early_zero = cluster;
+	      }
+	      if (et_array[cluster] < min_val)
+		  min_val=et_array[cluster];
+	      if (et_array[cluster] > max_val)
+		  max_val=et_array[cluster];
+	  }
+	  else
+	      et_array[cluster] = 0;
+
 	  avg_val+=et_array[cluster];
 	  fprintf(stderr,
 	      "Rank=%d & e/t ratio=%lf\n",
 	      cluster+1,et_array[cluster]);
 	}
+	if (early_zero > 0 && early_zero * 1.333 < et_num_clusters)
+	    et_num_clusters = (int)(early_zero * 1.333);
 
-	fprintf(stderr,"E/T ratio stats: zeros=%lf%%, min=%lf, max=%lf, avg=%lf\n",
-	      100*((double)zeros)/40,min_val, max_val, avg_val / 40);
+	fprintf(stderr,"E/T ratio stats: %d regs min=%lf, max=%lf, avg=%lf\n",
+	      et_num_clusters, min_val, max_val, avg_val / et_num_clusters);
 	
 	zeros = 0;
 	int total_clusters = 0;
-	bool has_tcells = false;
-	double cluster_dim = 10;
+	int total_cd4s = 0;
+	int dropped_cd4s = 0;
+	int cluster_dim = (int)sqrt(settings->et_cluster_size);
 
-	for (int cluster_row=0; cluster_row<(int)(settings->L/cluster_dim);cluster_row++)
-	    for (int cluster_col=0; cluster_col<(int)(settings->L/cluster_dim);cluster_col++) {
-		double prob_zeros=gsl_rng_uniform(settings->ur);
-		int cluster_num=gsl_rng_uniform_int(settings->ur,40);
+	for (int cluster_row=0; cluster_row<(int)((settings->L/cluster_dim)+0.5);cluster_row++)
+	    for (int cluster_col=0; cluster_col<(int)((settings->L/cluster_dim)+0.5);cluster_col++) {
+		//double prob_zeros=gsl_rng_uniform(settings->ur);
+		int cluster_num=gsl_rng_uniform_int(settings->ur,et_num_clusters);
+		bool has_tcells=false;
 		total_clusters++;
-		if (prob_zeros < FRACT_W_ZEROS || et_array[cluster_num] == 0) {
-		    zeros++;
-		    has_tcells = false;
-		} else {
-		    has_tcells = true;
-		}
-		for (int i=0; i < (int)cluster_dim; i++)
-		    for (int j=0; j < (int)cluster_dim; j++) {
-			int row = ((int)cluster_dim)*cluster_row+i;
-			int col = ((int)cluster_dim)*cluster_col+j;
+		for (int i=0; i < cluster_dim; i++)
+		    for (int j=0; j < cluster_dim; j++) {
+			int row = (cluster_dim)*cluster_row+i;
+			int col = (cluster_dim)*cluster_col+j;
 			double et_dice = gsl_rng_uniform(settings->ur);
+			double cd4_dice = gsl_rng_uniform(settings->ur);
 			bool place_tcell = false;
 			double dist = sqrt(pow((row - settings->L/2),2.0)+pow((col - settings->L/2),2.0));
+			// E/T ratio functions are based on just CD8s.  If
+			// CD4s are to be included, add them to the cluster 
+			// according to the cd4:cd8 ratio from the histologies
+			if (settings->add_cd4s && 
+			    et_dice<et_array[cluster_num] &&
+			    cd4_dice < settings->cd4_to_cd8_ratio)
+			{
+			    // place a cd4 (bystander) in any open slot
+			    // in the immediate 5x5 neighborhood
+			    bool placed_cd4=false;
+			    for (int k=-2; k <= 2; k++) {
+				for (int l=-2; l <= 2; l++) {
+				    if (row+k >= cluster_dim*cluster_row &&
+					col+l >= cluster_dim*cluster_col &&
+					row+k < cluster_dim*cluster_row+cluster_dim &&
+					col+l < cluster_dim*cluster_col+cluster_dim &&
+					(k != 0 || l != 0) &&
+					dynamics->t_cell_state[row+k][col+l]==EMPTY)
+				    {
+					dynamics->t_cell_state[row+k][col+l]=PAT_BYST;
+					if (dist < minTcelldist)
+					    minTcelldist=dist;
+					has_tcells=true;
+					placed_cd4=true;
+					total_cd4s++;
+					tot_t_cells++;
+					break;
+				    }
+				}
+				if (placed_cd4)
+				    break;
+			    }
+			    if (!placed_cd4)
+				dropped_cd4s++;
+			}
 
-			if (has_tcells && et_dice<et_array[cluster_num]*parameters->hsv_fract) {
+			    
+			if (et_dice<et_array[cluster_num]*parameters->hsv_fract) {
+			    // if a bystander (CD4) beat us here, 
+			    // toss it out in favor of the HSV-specific one!
+			    if (dynamics->t_cell_state[row][col]!=EMPTY) {
+				place_tcell=true;
+				dropped_cd4s++;
+				total_cd4s--;
+				tot_t_cells--;
+			    }
 			    dynamics->t_cell_state[row][col]=PAT_HSV;
 			    if (dist < minHSVdist)
 				minHSVdist=dist;
-			    place_tcell=true;
-			} else if (has_tcells && et_dice<et_array[cluster_num]){
+			    has_tcells=true;
+			} else if (dynamics->t_cell_state[row][col]==EMPTY &&
+				et_dice<et_array[cluster_num]){
 			    dynamics->t_cell_state[row][col]=PAT_BYST;
 			    if (dist < minTcelldist)
 				minTcelldist=dist;
 			    place_tcell=true;
+			    has_tcells=true;
 			}
 			if (place_tcell) {
 			    tot_t_cells++;
@@ -1007,12 +1151,17 @@ void place_tcells(global_settings *settings, global_parameters *parameters, glob
 			if (dynamics->cell_state[row][col]!=EMPTY)
 			    tot_cells++;
 		    }
+		if (has_tcells == false)
+		    zeros++;
 	}
 	dynamics->perc_zeros= 100*((double)zeros)/total_clusters;
-        fprintf(stdout,"%d clusters had no chance for CD8s (%lf%%)\n",
+        fprintf(stderr,"%d clusters had no effector cells (%lf%%)\n",
       		zeros,dynamics->perc_zeros);
+	if (settings->add_cd4s && tot_t_cells > total_cd4s)
+	    fprintf(stderr,"Added %d CD4s as bystander T cells (%lf%% of T cells) - dropped %d potential Cd4s\n",
+		    total_cd4s, 100.0*total_cd4s/tot_t_cells,dropped_cd4s);
 
-      // Option 2: read E/T ratios for clusters of 100 cells from file 
+      // Option 2: read E/T ratios for clusters of <et_cluster_size> cells from file 
       } else if(settings->trm_init==DISTRIB){
 	int clusters_read=0;
 	double *et_array=NULL;
@@ -1029,40 +1178,33 @@ void place_tcells(global_settings *settings, global_parameters *parameters, glob
 	  double max_val=0;
 	  double avg_val=0;
 	  for (int cluster=0; cluster < clusters_read; cluster++) {
-	    if (et_array[cluster] == 0)
-		zeros++;
 	    if (et_array[cluster] < min_val)
 		min_val=et_array[cluster];
 	    if (et_array[cluster] > max_val)
 		max_val=et_array[cluster];
 	    avg_val+=et_array[cluster];
 	  }
-	  fprintf(stderr,"E/T ratio stats: zeros=%lf%%, min=%lf, max=%lf, avg=%lf\n",
-		100*((double)zeros)/clusters_read,min_val, max_val, avg_val / clusters_read);
+	  fprintf(stderr,"E/T ratio stats: min=%lf, max=%lf, avg=%lf\n",
+		min_val, max_val, avg_val / clusters_read);
 	//}
 	
 	zeros = 0;
 	int total_clusters = 0;
-	bool has_tcells = false;
-	for (int cluster_row=0; cluster_row<settings->L/10;cluster_row++)
-	    for (int cluster_col=0; cluster_col<settings->L/10;cluster_col++) {
+	int cluster_dim = (int)sqrt(settings->et_cluster_size);
+	for (int cluster_row=0; cluster_row<settings->L/cluster_dim;cluster_row++)
+	    for (int cluster_col=0; cluster_col<settings->L/cluster_dim;cluster_col++) {
 		int cluster_num=gsl_rng_uniform_int(settings->ur,clusters_read);
 		total_clusters++;
-		if (et_array[cluster_num] == 0) {
-		    zeros++;
-		    has_tcells = false;
-		} else {
-		    has_tcells = true;
-		}
-		for (int i=0; i < 10; i++)
-		    for (int j=0; j < 10; j++) {
-			int row = 10*cluster_row+i;
-			int col = 10*cluster_col+j;
+		bool has_tcells=false;
+		for (int i=0; i < cluster_dim; i++)
+		    for (int j=0; j < cluster_dim; j++) {
+			int row = cluster_dim*cluster_row+i;
+			int col = cluster_dim*cluster_col+j;
 			double et_dice = gsl_rng_uniform(settings->ur);
 			bool place_tcell = false;
 			double dist = sqrt(pow((row - settings->L/2),2.0)+pow((col - settings->L/2),2.0));
 
-			if (has_tcells && et_dice<et_array[cluster_num]*parameters->hsv_fract) {
+			if (et_dice<et_array[cluster_num]*parameters->hsv_fract) {
 			    dynamics->t_cell_state[row][col]=PAT_HSV;
 			    if (dist < minHSVdist)
 				minHSVdist=dist;
@@ -1074,6 +1216,7 @@ void place_tcells(global_settings *settings, global_parameters *parameters, glob
 			    place_tcell=true;
 			}
 			if (place_tcell) {
+			    has_tcells=true;
 			    tot_t_cells++;
 			    // immediate neighborhood of center point?
 			    if (abs(row - settings->L/2) <= 1 && 
@@ -1115,9 +1258,11 @@ void place_tcells(global_settings *settings, global_parameters *parameters, glob
 			if (dynamics->cell_state[row][col]!=EMPTY)
 			    tot_cells++;
 		    }
+		if (has_tcells == false)
+		    zeros++;
 	}
 	dynamics->perc_zeros= 100*((double)zeros)/total_clusters;
-        fprintf(stdout,"%d clusters had no chance for CD8s (%lf%%)\n",
+        fprintf(stderr,"%d clusters had no effector cells (%lf%%)\n",
       		zeros,dynamics->perc_zeros);
 
       // Option 3: place all Trms randomly using tcell_density parameter
@@ -2129,7 +2274,7 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
     
     dynamics->num_updates=0;
     compute_totals(settings,parameters,dynamics);
-    output_results(runnum,settings,dynamics,false);
+    output_results(runnum,settings,parameters,dynamics,false);
     if (settings->save_plot_data || settings->save_state_files)
 	dump_data(settings,parameters,dynamics);
     
@@ -2198,7 +2343,28 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 
 	      // in the "enhanced state" t-cells still move, but also 
 	      // proliferate and produce their own cytokines!
-	      if (dynamics->t_cell_state[i][j] == ACT_HSV ||
+		if(dynamics->t_cell_state[i][j]==EMPTY||
+			dynamics->t_cell_state[i][j]==DEAD){
+
+		//TEM arrives from LN (trafficking) if enough time has elapsed 
+		// and probability met (based on rate)
+		    if(dynamics->time>(parameters->tem_delay)&&
+		       dice_t<=parameters->tem_trafficking/parameters->max_rate) {
+			    if (gsl_rng_uniform(settings->ur) < parameters->hsv_fract)
+			    {
+				dynamics->t_cell_state[i][j]=PAT_HSV;
+				dynamics->hsv_tems++;
+			    }
+			    else
+			    {
+				dynamics->t_cell_state[i][j]=PAT_BYST;
+				dynamics->byst_tems++;
+			    }
+			}
+	      }
+	      // in the "enhanced state" t-cells still move, but also 
+	      // proliferate and produce their own cytokines!
+	      else if (dynamics->t_cell_state[i][j] == ACT_HSV ||
 		  dynamics->t_cell_state[i][j] == ACT_BYST) {
 
 		  //Event 1a.0: produce cytokine_matrix 
@@ -2219,7 +2385,7 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 	      }
 	      //Case a: Antigen present
 	      //  HSV + Trms activate!
-	      if (dynamics->t_cell_state[i][j] == PAT_HSV &&
+	      else if (dynamics->t_cell_state[i][j] == PAT_HSV &&
 		    detected_antigen) {
 		    dynamics->t_cell_state[i][j] = ACT_HSV;
 		    if (dynamics->time < dynamics->trm_act_time){
@@ -2262,9 +2428,17 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 	      //Case b: Antigen and cytokines absent
 	      }else{
 		
+		//Event 1b.0: leave (if Tem)
+		if(parameters->tem_trafficking > 0 &&
+		   (dynamics->t_cell_state[i][j]==PAT_HSV ||
+		   dynamics->t_cell_state[i][j]==PAT_BYST) &&
+		   dice_t<=parameters->tem_exiting/parameters->max_rate){
+		      dynamics->t_cell_state[i][j]=EMPTY;
+		      dynamics->tem_exits++;
+		}
 		//Event 1b.1: decay/die
-		if(dice_t<=parameters->trm_decay/parameters->max_rate){
-		  dynamics->t_cell_state[i][j]=5;
+		else if(dice_t<=parameters->trm_decay/parameters->max_rate){
+		  dynamics->t_cell_state[i][j]=DEAD;
 		  
 		//Event 1b.2: move -All patrolling phenotypes, activated bystanders
 		// and HSV+ Trms lacking antigen to combat
@@ -2535,7 +2709,7 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 	dynamics->num_updates=dynamics->num_updates+1;
 	compute_totals(settings,parameters,dynamics);
 	if (dynamics->time >= next_data_capture) {
-	    output_results(runnum,settings,dynamics,false);
+	    output_results(runnum,settings,parameters,dynamics,false);
 	    next_data_capture += settings->data_freq;
 	}
 	if (dynamics->time >= next_screen_capture) {
@@ -2552,6 +2726,10 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 	}
     }
     
+    fprintf(stderr,"In %g days, Added %d HSV+ Tems and %d bystander Tems (%d exited)\n",
+	dynamics->time,dynamics->hsv_tems,dynamics->byst_tems,
+	dynamics->tem_exits);
+
     fprintf(stderr,"Cytokines saved %d infections and %lf log virions\n",
 	infections_avoided,(virions_avoided > 0)?log10(virions_avoided):0);
     
@@ -2606,8 +2784,8 @@ void compute_totals(global_settings *settings,global_parameters *parameters,glob
 	    if (dynamics->t_cell_state[i][j]==DEAD)
 		dynamics->dead_tcells++;
 	}
-	if (dynamics->virions > dynamics->max_vl){
-	    dynamics->max_vl=dynamics->virions;
+	if (dynamics->virions*parameters->psi > dynamics->max_vl){
+	    dynamics->max_vl=dynamics->virions*parameters->psi;
 	    dynamics->max_vl_time=dynamics->time;
 	}
 }
@@ -2808,20 +2986,21 @@ void dump_data(global_settings *settings,global_parameters *parameters,global_dy
 }
 
 // This routine writes to the results.csv file (time history data)
-void output_results(int runnum, global_settings *settings,global_dynamics *dynamics,bool header){
+void output_results(int runnum, global_settings *settings,
+	global_parameters *parameters,global_dynamics *dynamics,bool header){
 
     if (settings->dataF1==NULL) {
 	fprintf(stderr,"No output file\n");
 	exit(1);
     }
     // update sampled peak and its timestamp
-    if (dynamics->virions > dynamics->max_samp_vl) {
-	dynamics->max_samp_vl=dynamics->virions;
+    if (dynamics->virions*parameters->psi > dynamics->max_samp_vl) {
+	dynamics->max_samp_vl=dynamics->virions*parameters->psi;
 	dynamics->max_samp_vl_time=dynamics->time;
     }
-    if (dynamics->virions > DETECTION_THRESHOLD &&
+    if (dynamics->virions*parameters->psi > DETECTION_THRESHOLD &&
 	dynamics->first_samp_vl == 0) {
-	dynamics->first_samp_vl=dynamics->virions;
+	dynamics->first_samp_vl=dynamics->virions*parameters->psi;
 	dynamics->first_samp_vl_time=dynamics->time;
     }
     if (header) {
@@ -2863,6 +3042,9 @@ void output_results(int runnum, global_settings *settings,global_dynamics *dynam
 	    fprintf(settings->dataF1,",max sampled log VL");
 	    fprintf(settings->dataF1,",max sampled time");
 	    fprintf(settings->dataF1,",plaque size");
+	    fprintf(settings->dataF1,",hsv tems");
+	    fprintf(settings->dataF1,",byst tems");
+	    fprintf(settings->dataF1,",tem exits");
 	    fprintf(settings->dataF1,"\n");
 	    fflush(settings->dataF1);
     } else {
@@ -2876,8 +3058,8 @@ void output_results(int runnum, global_settings *settings,global_dynamics *dynam
 	    fprintf(settings->dataF1,",%d", dynamics->act_hsv);
 	    fprintf(settings->dataF1,",%d", dynamics->pat_byst);
 	    fprintf(settings->dataF1,",%d", dynamics->act_byst);
-	    fprintf(settings->dataF1,",%d", dynamics->virions);
-	    fprintf(settings->dataF1,",%4.3lf", (dynamics->virions>0)?log10(dynamics->virions):0);
+	    fprintf(settings->dataF1,",%d", (int)(dynamics->virions*parameters->psi));
+	    fprintf(settings->dataF1,",%4.3lf", (dynamics->virions*parameters->psi>0)?log10(dynamics->virions*parameters->psi):0);
 	    fprintf(settings->dataF1,",%4.3lf", (dynamics->max_vl>0)?log10(dynamics->max_vl):0);
 	    fprintf(settings->dataF1,",%4.3lf", dynamics->max_vl_time);
 	    fprintf(settings->dataF1,",%d", dynamics->viral_cells);
@@ -2904,6 +3086,9 @@ void output_results(int runnum, global_settings *settings,global_dynamics *dynam
 	    fprintf(settings->dataF1,",%4.3lf", (dynamics->max_samp_vl>0)?log10(dynamics->max_samp_vl):0);
 	    fprintf(settings->dataF1,",%4.3lf", dynamics->max_samp_vl_time);
 	    fprintf(settings->dataF1,",%4.3lf", calc_plaque_size(settings, dynamics));
+	    fprintf(settings->dataF1,",%d", dynamics->hsv_tems);
+	    fprintf(settings->dataF1,",%d", dynamics->byst_tems);
+	    fprintf(settings->dataF1,",%d", dynamics->tem_exits);
 	    fprintf(settings->dataF1,"\n");
 	    fflush(settings->dataF1);
     }

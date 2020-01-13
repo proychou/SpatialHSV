@@ -34,7 +34,8 @@ void propagate_deltas(global_settings *settings,global_dynamics *dynamics);
 double cyt_effect(double dose, global_parameters *parameters);
 double new_cyt_effect(double dose, global_parameters *parameters);
 void move_tcell(int i, int j,double dice_cells,global_settings *settings, global_parameters *parameters, global_dynamics *dynamics);
-void output_results(int runnum, global_settings *settings,global_dynamics *dynamics,bool header);
+void output_results(int runnum, global_settings *settings,
+	global_parameters *parameters,global_dynamics *dynamics,bool header);
 void dump_data(global_settings *settings,global_parameters *parameters,global_dynamics *dynamics);
 void end_simulation(global_dynamics *dynamics);
 //void output_results(global_settings *settings,results,header);
