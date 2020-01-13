@@ -15,9 +15,12 @@ old_scale<-as.numeric(args[9])
 cyt_trm_ic50<-as.numeric(args[10]) 
 cyt_inf_death<-as.numeric(args[11])
 hsv_fract<-as.numeric(args[12])
+psi<-as.numeric(args[13])
+viral_decay<-as.numeric(args[14])
+plaques<-as.numeric(args[15])
 
 data <- read.csv("results.csv", comment.char="#")
-#episode,time,prodeptible,inf_nonprod,inf_prod,dead_cells,pat hsv Trm,act hsv Trm,pat byst Trm,act byst Trm,virions,log virions,max log VL,max time,viral_cells,cytokines,cyto_cells,gauss offset,avg E/T ratio,3x3 E/T ratio,5x5 E/T ratio,7x7 E/T ratio,9x9 E/T ratio,11x11 E/T ratio,percent 0s,closest HSV+,closest Tcell,total infected,log total virus,cytokine kills,Tcell kills,first beta antigen,first beta cycto,first sampled log VL,first sampled time,max sampled log VL,max sampled time
+#episode,time,susceptible,inf_nonprod,inf_prod,dead_cells,pat hsv Trm,act hsv Trm,pat byst Trm,act byst Trm,virions,log virions,max log VL,max time,viral_cells,cytokines,cyto_cells,gauss offset,avg E/T ratio,3x3 E/T ratio,5x5 E/T ratio,7x7 E/T ratio,9x9 E/T ratio,11x11 E/T ratio,percent 0s,closest HSV+,closest Tcell,total infected,log total virus,cytokine kills,Tcell kills,first trm antigen,first trm cycto,first sampled log VL,first sampled time,max sampled log VL,max sampled time,plaque size
 
 print (nrow(data))
 write("sample,run,time,log VL", file="all_samples.csv",append=FALSE)
@@ -41,12 +44,15 @@ near_Tcell<-data[,27]
 tot_inf<-data[,28]
 log_Vt<-data[,29]
 cyto_kills<-data[,30]
-beta_kills<-data[,31]
+trm_kills<-data[,31]
+trm_act<-data[,32]
+#plaq_size<-data[,38]
 
 id_index<-vector(length=nrow(data))
 epis<-vector(length=nrow(data))
 avg_dur<-vector(length=nrow(data))
 vl_max<-vector(length=nrow(data))
+vl_fpeak<-vector(length=nrow(data))
 cyto_max<-vector(length=nrow(data))
 first_pos<-vector(length=nrow(data))
 avg_shed<-vector(length=nrow(data))
@@ -59,8 +65,10 @@ tot_time<-vector(length=nrow(data))
 all_epis_id<-vector(length=nrow(data))
 all_epis_dur<-vector(length=nrow(data))
 all_epis_max<-vector(length=nrow(data))
+all_epis_fpeak<-vector(length=nrow(data))
 all_epis_cyto_max<-vector(length=nrow(data))
 all_epis_max_time<-vector(length=nrow(data))
+all_epis_fp_time<-vector(length=nrow(data))
 all_epis_max_scale<-vector(length=nrow(data))
 #all_epis_mean_VL<-vector(length=nrow(data))
 all_epis_firsts<-vector(length=nrow(data))
@@ -78,11 +86,12 @@ all_near_Tcell<-vector(length=nrow(data))
 all_tot_inf<-vector(length=nrow(data))
 all_log_Vt<-vector(length=nrow(data))
 all_cyto_kills<-vector(length=nrow(data))
-all_beta_kills<-vector(length=nrow(data))
-all_beta_act_times<-vector(length=nrow(data))
+all_trm_kills<-vector(length=nrow(data))
+all_trm_act_times<-vector(length=nrow(data))
+#all_plaq_sizes<-vector(length=nrow(data))
 total_epis=0
 vls_this_pat=0
-beta_act_time=-1
+trm_act_time=-1
 
 pat_cnt=0
 
@@ -103,11 +112,14 @@ first_i = 1
 epi_start=0
 cyto_max_this_epi=0
 max_this_epi=0
+fpeak_this_epi=0
 max_time_this_epi=0
+fp_time_this_epi=0
 #mean_epi_VL=0
 num_epi_VL=0
 start_recording=0
 sample=1
+fp_found=FALSE
 
 for (i in 1:nrow(data))
 {
@@ -131,12 +143,17 @@ for (i in 1:nrow(data))
 	  if (max_this_epi > vl_max[pat_cnt])
 	      vl_max[pat_cnt]=max_this_epi
 
+	  if (!fp_found && fpeak_this_epi > vl_fpeak[pat_cnt])
+	      vl_fpeak[pat_cnt]=fpeak_this_epi
+
 	  if (cyto_max_this_epi > cyto_max[pat_cnt])
 	      cyto_max[pat_cnt]=cyto_max_this_epi
 
            total_epis=total_epis+1  
            all_epis_dur[total_epis]=last_time-epi_start+0.25*runif(1)+0.25*runif(1)
            all_epis_cyto_max[total_epis]=cyto_max_this_epi
+           all_epis_fpeak[total_epis]=fpeak_this_epi
+           all_epis_fp_time[total_epis]=fp_time_this_epi
            all_epis_max[total_epis]=max_this_epi
            all_epis_max_time[total_epis]=max_time_this_epi
            all_epis_max_scale[total_epis]=scale_at_max
@@ -155,8 +172,9 @@ for (i in 1:nrow(data))
 	   all_tot_inf[total_epis]=tot_inf[i-1]
 	   all_log_Vt[total_epis]=log_Vt[i-1]
 	   all_cyto_kills[total_epis]=cyto_kills[i-1]
-	   all_beta_kills[total_epis]=beta_kills[i-1]
-	   all_beta_act_times[total_epis]=beta_act_time
+	   all_trm_kills[total_epis]=trm_kills[i-1]
+	   all_trm_act_times[total_epis]=trm_act_time
+	   #all_plaq_sizes[total_epis]=plaq_size[i-1]
 	   print(paste("Old ID: epi=",epis[pat_cnt],"end=",last_time,"1st=",all_epis_firsts[total_epis],"max=",all_epis_max[total_epis],"at t=",all_epis_max_time[total_epis],"dur=",all_epis_dur[total_epis]))
 	}
 	if (pat_cnt > 0 && epi_start > 0)
@@ -194,7 +212,7 @@ for (i in 1:nrow(data))
 	    
 	}
 	pat_cnt = pat_cnt+1
-	beta_act_time=-1
+	trm_act_time=-1
 
 #	reinitialize for the new patient...
 	scale<-tot_inf[i]
@@ -208,9 +226,12 @@ for (i in 1:nrow(data))
 	    scaled_log_virus=0
 
 	cyto_max_this_epi=tot_cyto[i]
+	fpeak_this_epi=scaled_log_virus
 	max_this_epi=scaled_log_virus
 	scale_at_max=scale
 	max_time_this_epi=0
+	fp_time_this_epi=0
+	fp_found=FALSE
         epi_first_pos = scaled_log_virus
 	avg_shed[pat_cnt]=0
 	vl_means[pat_cnt]=0
@@ -262,16 +283,20 @@ for (i in 1:nrow(data))
 
 	if (start_recording)
 	{
-	    if (beta_act_time < 0 && actHSV[i] > 0) {
-		beta_act_time=col_time[i]
+	    if (trm_act_time < 0 && actHSV[i] > 0) {
+		trm_act_time=trm_act[i]
 		print(paste("HSV activation at t=",col_time[i]))
 	    }
 	    if (scaled_log_virus >=2 && last_log_vl < 2)
 	    {
 	       epi_start=col_time[i]
 	       max_this_epi=scaled_log_virus
+	       fpeak_this_epi=scaled_log_virus
 	       scale_at_max=scale
-	       max_time_this_epi=0.25*runif(1)
+	       adj_time=0.25*runif(1)
+	       max_time_this_epi=adj_time
+	       fp_time_this_epi=adj_time
+	       fp_found=FALSE
 	       print(paste("Same ID: start=",epi_start,"log VL=",log_virus[i]))
 	       #epis[pat_cnt]=epis[pat_cnt]+1  
 	       if (i != first_i)
@@ -281,11 +306,24 @@ for (i in 1:nrow(data))
 	       #mean_epi_VL=10**log_virus[i]
 	       num_epi_VL=1
 	    }
-	    else if (scaled_log_virus >max_this_epi)
+	    else 
 	    {
-		max_this_epi=scaled_log_virus
-	        scale_at_max=scale
-		max_time_this_epi=col_time[i]-epi_start+0.25*runif(1)
+		adj_time=col_time[i]-epi_start+0.25*runif(1)
+		if (!fp_found && scaled_log_virus >fpeak_this_epi)
+		{
+		    fpeak_this_epi=scaled_log_virus
+		    fp_time_this_epi=adj_time
+		}
+		if (!fp_found && scaled_log_virus <fpeak_this_epi)
+		{
+		    fp_found=TRUE
+		}
+		if (scaled_log_virus >max_this_epi)
+		{
+		    max_this_epi=scaled_log_virus
+		    scale_at_max=scale
+		    max_time_this_epi=adj_time
+		}
 	    }
 	    print(paste("Checking at t=",col_time[i],"scale=",scale,"scaled log virus=",scaled_log_virus,"max=",max_this_epi,"at t=",max_time_this_epi,"epi start=",epi_start))
 
@@ -305,6 +343,9 @@ for (i in 1:nrow(data))
 	       #first_pos[pat_cnt]=(first_pos[pat_cnt]*(epis[pat_cnt]-1) + epi_first_pos) / epis[pat_cnt]
 	      if (max_this_epi > vl_max[pat_cnt])
 		  vl_max[pat_cnt]=max_this_epi
+	      if (!fp_found && fpeak_this_epi > vl_fpeak[pat_cnt])
+		  vl_fpeak[pat_cnt]=fpeak_this_epi
+
 	      if (tot_cyto[i] >cyto_max_this_epi)
 		  cyto_max_this_epi=tot_cyto[i]
 
@@ -312,6 +353,8 @@ for (i in 1:nrow(data))
 	       total_epis=total_epis+1  
 	       all_epis_dur[total_epis]=(col_time[i]-epi_start+0.25*runif(1)+0.25*runif(1))
 	       all_epis_cyto_max[total_epis]=cyto_max_this_epi
+	       all_epis_fpeak[total_epis]=fpeak_this_epi
+	       all_epis_fp_time[total_epis]=fp_time_this_epi
 	       all_epis_max[total_epis]=max_this_epi
 	       all_epis_max_time[total_epis]=max_time_this_epi
 	       all_epis_max_scale[total_epis]=scale_at_max
@@ -330,13 +373,17 @@ for (i in 1:nrow(data))
 	       all_tot_inf[total_epis]=tot_inf[i]
 	       all_log_Vt[total_epis]=log_Vt[i]
 	       all_cyto_kills[total_epis]=cyto_kills[i]
-	       all_beta_kills[total_epis]=beta_kills[i]
-	       all_beta_act_times[total_epis]=beta_act_time
+	       all_trm_kills[total_epis]=trm_kills[i]
+	       all_trm_act_times[total_epis]=trm_act_time
+	       #all_plaq_sizes[total_epis]=plaq_size[i]
+
 	       max_this_epi=scaled_log_virus;
+	       fpeak_this_epi=scaled_log_virus;
 	       scale_at_max=scale
+	       fp_found=FALSE
 	       cyto_max_this_epi=tot_cyto[i];
 
-	       print(paste("Curr ID: epi=",epis[pat_cnt],"start=",epi_start,"end=",col_time[i],"1st=",all_epis_firsts[total_epis],"max=",all_epis_max[total_epis],"at t=",all_epis_max_time[total_epis],"dur=",all_epis_dur[total_epis]))
+	       print(paste("Curr ID: epi=",epis[pat_cnt],"start=",epi_start,"end=",col_time[i],"1st=",all_epis_firsts[total_epis],"max=",all_epis_max[total_epis],"at t=",all_epis_max_time[total_epis],"first peak=",all_epis_fpeak[total_epis],"at t=",all_epis_fp_time[total_epis],"dur=",all_epis_dur[total_epis]))
 	    }
 	    
 	    if (scaled_log_virus !=0 && last_log_vl != 0 &&  i != first_i)
@@ -373,6 +420,12 @@ if (last_log_vl >= 2 && start_recording > 0)
   if (max_this_epi > vl_max[pat_cnt])
       vl_max[pat_cnt]=max_this_epi
 
+  if (!fp_found && fpeak_this_epi > vl_fpeak[pat_cnt])
+      vl_fpeak[pat_cnt]=fpeak_this_epi
+
+  if (max_this_epi > vl_max[pat_cnt])
+      vl_max[pat_cnt]=max_this_epi
+
   if (tot_cyto[i] >cyto_max_this_epi)
       cyto_max_this_epi=tot_cyto[i]
    #mean_epi_VL=log(mean_epi_VL/num_epi_VL)/log(10)
@@ -381,6 +434,8 @@ if (last_log_vl >= 2 && start_recording > 0)
    all_epis_dur[total_epis]=(last_time-epi_start+0.25*runif(1)+0.25*runif(1))
    print(paste("Last ID: end=",last_time,"epis=",total_epis,"dur=",all_epis_dur[total_epis]))
    all_epis_cyto_max[total_epis]=cyto_max_this_epi
+   all_epis_fpeak[total_epis]=fpeak_this_epi
+   all_epis_fp_time[total_epis]=fp_time_this_epi
    all_epis_max[total_epis]=max_this_epi
    all_epis_max_time[total_epis]=max_time_this_epi
    all_epis_max_scale[total_epis]=scale_at_max
@@ -399,8 +454,9 @@ if (last_log_vl >= 2 && start_recording > 0)
    all_tot_inf[total_epis]=tot_inf[nrow(data)]
    all_log_Vt[total_epis]=log_Vt[nrow(data)]
    all_cyto_kills[total_epis]=cyto_kills[nrow(data)]
-   all_beta_kills[total_epis]=beta_kills[nrow(data)]
-   all_beta_act_times[total_epis]=beta_act_time
+   all_trm_kills[total_epis]=trm_kills[nrow(data)]
+   all_trm_act_times[total_epis]=trm_act_time
+   #all_plaq_sizes[total_epis]=plaq_size[nrow(data)]
 }
 
 last_shed=avg_shed[pat_cnt]
@@ -430,20 +486,24 @@ if (tot_time[pat_cnt]==0)
 print (paste("Last Patient",pat_cnt,"last time",last_time,"first time",first_time,"avg shed=",avg_shed[pat_cnt],"avg vl=",vl_means[pat_cnt]))
 
 print (paste(pat_cnt," runs"))
-write("Runs,total time,episodes,avg days,peak log VL,avg shed,avg log VL,log VL mean,log VL variance,avg first pos,epi rate,max cytokine",file="run_summary_nz.csv",append=FALSE)
+write("Runs,total time,episodes,avg days,peak log VL,avg shed,avg log VL,log VL mean,log VL variance,avg first pos,epi rate,max cytokine,first peak",file="run_summary_nz.csv",append=FALSE)
 for (i in 1:pat_cnt)
 {
     if (vl_means[i] > 0)
     {
 	this_id=p_ids[id_index[i]]
-	write(paste(this_id,tot_time[i],epis[i],avg_dur[i],vl_max[i],avg_shed[i],vl_means[i],vl_mean2[i],vl_vars[i],log(first_pos[i])/log(10),epi_rate[i],cyto_max[i],sep=","),file="run_summary_nz.csv",append=TRUE)
+	write(paste(this_id,tot_time[i],epis[i],avg_dur[i],vl_max[i],avg_shed[i],vl_means[i],vl_mean2[i],vl_vars[i],log(first_pos[i])/log(10),epi_rate[i],cyto_max[i],vl_fpeak[i],sep=","),file="run_summary_nz.csv",append=TRUE)
     }
 }
 print (paste(total_epis," episodes"))
-write("infectivity,viral prod,viral diff,cyto diff,cyto uptake,beta ic50,inf ic50,beta ic50,scale_at_max,cyt_trm_ic50,cyt_inf_death,hsv_fract,Episode,run,duration,scaled peak logVL,peak time,first pos VL,avg E/T ratio,3x3 E/T ratio,5x5 E/T ratio,7x7 E/T ratio,9x9 E/T ratio,11x11 E/T ratio,percent 0s,start HSV+,start BYST,nearest HSV+,nearest BYST,max cytokine,total infected,log total virus,cytokine kills,Tcell kills,Tcell act time", file="all_episodes.csv",append=FALSE)
+#write("infectivity,viral prod,viral diff,cyto diff,cyto uptake,beta ic50,inf ic50,prod ic50,scale_at_max,cyt_trm_ic50,cyt_inf_death,hsv_fract,Episode,run,duration,scaled peak logVL,peak time,first pos VL,avg E/T ratio,3x3 E/T ratio,5x5 E/T ratio,7x7 E/T ratio,9x9 E/T ratio,11x11 E/T ratio,percent 0s,start HSV+,start BYST,nearest HSV+,nearest BYST,max cytokine,total infected,log total virus,cytokine kills,Tcell kills,Tcell act time,plaque size,psi,first peak,first peak time,viral decay,plaques", file="all_episodes.csv",append=FALSE)
+write("infectivity,viral prod,viral diff,cyto diff,cyto uptake,beta ic50,inf ic50,prod ic50,scale_at_max,cyt_trm_ic50,cyt_inf_death,hsv_fract,Episode,run,duration,scaled peak logVL,peak time,first pos VL,avg E/T ratio,3x3 E/T ratio,5x5 E/T ratio,7x7 E/T ratio,9x9 E/T ratio,11x11 E/T ratio,percent 0s,start HSV+,start BYST,nearest HSV+,nearest BYST,max cytokine,total infected,log total virus,cytokine kills,Tcell kills,Tcell act time,psi,first peak,first peak time,viral decay,plaques", file="all_episodes.csv",append=FALSE)
 for (i in 1:total_epis)
 {
     write(paste(beta,viral_prod,viral_diff,cyt_diff,cyt_uptake,beta_ic50,inf_ic50,prod_ic50,all_epis_max_scale[i],cyt_trm_ic50,cyt_inf_death,hsv_fract,i,p_ids[all_epis_id[i]],all_epis_dur[i],all_epis_max[i],all_epis_max_time[i],all_epis_firsts[i],all_et_ratio[i],all_et_3x3[i],all_et_5x5[i],all_et_7x7[i],all_et_9x9[i],all_et_11x11[i],all_perc_0s[i],all_startHSV[i],all_startTcell[i],all_near_HSV[i],all_near_Tcell[i],all_epis_cyto_max[i], 
    all_tot_inf[i], all_log_Vt[i], all_cyto_kills[i],
-   all_beta_kills[i],all_beta_act_times[i],sep=","),file="all_episodes.csv",append=TRUE)
+   #all_trm_kills[i],all_trm_act_times[i],all_plaq_sizes[i],
+   all_trm_kills[i],all_trm_act_times[i],
+   psi,all_epis_fpeak[i],all_epis_fp_time[i],viral_decay,plaques,
+   sep=","),file="all_episodes.csv",append=TRUE)
 }
