@@ -891,8 +891,7 @@ void place_virus(global_settings *settings, global_dynamics *dynamics){
       
     }else if(settings->place_virus_type==RANDOM){ //virus spread randomly on grid
 
-      int locs = gsl_rng_uniform_int(settings->ur,settings->start_plaques);
-      for (int plaqs=0; plaqs<locs;plaqs++) {
+      for (int plaqs=0; plaqs<settings->start_plaques;plaqs++) {
 	  int i = gsl_rng_uniform_int(settings->ur,settings->L);
 	  int j = gsl_rng_uniform_int(settings->ur,settings->L);
 	  dynamics->viral_matrix[i][j]=settings->place_virus_num;
@@ -903,8 +902,7 @@ void place_virus(global_settings *settings, global_dynamics *dynamics){
 	dynamics->cell_state[settings->L/2][settings->L/2]=INFP; 
 	dynamics->tot_infs++;
       }else{ //randomly on the grid
-	int locs = gsl_rng_uniform_int(settings->ur,settings->start_plaques);
-	for (int plaqs=0; plaqs<locs;plaqs++) {
+	for (int plaqs=0; plaqs<settings->start_plaques;plaqs++) {
 	    int i = gsl_rng_uniform_int(settings->ur,settings->L);
 	    int j = gsl_rng_uniform_int(settings->ur,settings->L);
 	    dynamics->cell_state[i][j]=INFP;
