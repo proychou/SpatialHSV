@@ -101,7 +101,7 @@ using namespace std;
 #define COORDS 1
 #define SUM 2
 
-#define MAX_LINE 80
+#define MAX_LINE 200
 #define MAX_ET_ENTRIES 2000
 #define MAX_CLUSTERS 100
 
@@ -152,10 +152,14 @@ void read_input_file(char *inp_file, global_settings *settings, global_parameter
     while (fgets(tmpline, MAX_LINE-1,inf) != NULL) {
 	i++;
 	tmpline[MAX_LINE-1] = '\0';
-	if (tmpline[0]=='#')
+	if (tmpline[0]=='#' || tmpline[0]=='\r' || tmpline[0]=='\n')
+	{
+	    cout << tmpline;
+	    cout<<endl;
 	    continue;
+	}
 
-	valuep = rindex(tmpline,' ');
+	valuep = index(tmpline,' ');
 	if (valuep == NULL) {
 	    cerr << "Error while reading parameter name from "<<inp_file<<" at parameter #"<<i<<"\n";
 	    exit(1);
