@@ -11,14 +11,14 @@ gsl_matrix *compute_gaussian(double mask_range,double sig,double amp);
 void place_host(global_parameters *parameters,global_dynamics *dynamics);
 void place_virus(global_settings *settings,global_dynamics *dynamics);
 void place_tcells(global_settings *settings, global_parameters *parameters,global_dynamics *dynamics);
-void neur_drip(int i,int j,global_dynamics *dynamics);
+void neur_drip(int s,int i,int j,global_dynamics *dynamics);
 double calc_plaque_size(global_settings *settings);
 void diffusion_cyt(global_settings *settings,int i, int j,gsl_matrix *gaussian_mask,global_parameters *parameters, global_dynamics *dynamics);
-void diffusion_virus(global_settings *settings,int i, int j,gsl_matrix * gaussian_mask,global_parameters *parameters);
+void diffusion_virus(global_settings *settings,int s,int i, int j,gsl_matrix * gaussian_mask,global_parameters *parameters);
 void gaussburst(double burst_size,gsl_matrix *gaussian_mask);
 bool close_to_plaq(int i,int j, global_settings *settings,global_parameters *parameters, global_dynamics *dynamics);
 void distrib_progeny(global_settings *settings,global_parameters *parameters,
-	global_dynamics *dynamics, int what, int i, int j,double burst,
+	global_dynamics *dynamics, int what, int s, int i, int j,double burst,
 	gsl_matrix *gaussian_mask);
 bool pick_nbr(global_settings *settings,int i,int j, int *coords);
 int detect_inf(global_settings *settings, global_parameters *parameters, double dice_cells, 

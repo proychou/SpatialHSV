@@ -68,15 +68,23 @@ using namespace std;
 #define EMPTY 0
 #define SUSCEPTIBLE 1
 #define UNPROTECTABLE 2
-#define INFN 3
-#define INFP 4
-#define DEAD 5
-#define CYTO_KILLED 6
-#define TRM_KILLED 7
+#define INFN_A 3
+#define INFN_B 4
+#define INFN_ABn 5
+#define INFN_ABr 6
+#define INFP_A 7
+#define INFP_B 8
+#define INFP_ABn 9
+#define INFP_ABr 10
+#define DEAD 11
+#define CYTO_KILLED 12
+#define TRM_KILLED 13
 
 // categories for checking neighbors
 #define ANY 1
 #define INF 2
+#define INFP 3
+#define INFN 4
 #define ALL_CELLS 5
 #define PAT_HSV 6
 #define ACT_HSV 7
@@ -177,6 +185,9 @@ void read_input_file(char *inp_file, global_settings *settings, global_parameter
     CHECK_FOR_INT_SETTING("place_virus_type",place_virus_type);
     CHECK_FOR_INT_SETTING("place_virus_num",place_virus_num);
     CHECK_FOR_INT_SETTING("start_plaques",start_plaques);
+    CHECK_FOR_INT_SETTING("max_start_strains",max_start_strains);
+    CHECK_FOR_INT_SETTING("start_neur_strain",start_neur_strain);
+    CHECK_FOR_INT_SETTING("max_neur_drips",max_neur_drips);
     CHECK_FOR_INT_SETTING("trm_init",trm_init);
     CHECK_FOR_INT_SETTING("trm_move_method",trm_move_method);
     CHECK_FOR_INT_SETTING("trm_random_gaussian",trm_random_gaussian);
@@ -191,11 +202,11 @@ void read_input_file(char *inp_file, global_settings *settings, global_parameter
     CHECK_FOR_SETTING("site_scale",site_scale);
     CHECK_FOR_SETTING("refr_freq",refr_freq);
     CHECK_FOR_SETTING("data_freq",data_freq);
-    CHECK_FOR_INT_SETTING("panels",panels);
     CHECK_FOR_INT_SETTING("save_plot_data",save_plot_data);
     CHECK_FOR_INT_SETTING("save_ratio_data",save_ratio_data);
     CHECK_FOR_INT_SETTING("save_state_files",save_state_files);
     CHECK_FOR_INT_SETTING("plot_cytokines",plot_cytokines);
+    CHECK_FOR_INT_SETTING("plot_trms",plot_trms);
     CHECK_FOR_INT_SETTING("stop_early",stop_early);
 
     CHECK_FOR_INT_SETTING("et_ratio_function",et_ratio_function);
@@ -226,20 +237,28 @@ void read_input_file(char *inp_file, global_settings *settings, global_parameter
     //check for parameters in the file:
     CHECK_FOR_INT_PARAMETER("max_rate",max_rate);
     CHECK_FOR_PARAMETER("uninf_cell_death",uninf_cell_death);
-    CHECK_FOR_PARAMETER("infectivity_free",infectivity_free);
+    CHECK_FOR_PARAMETER("infectivity_free_A",infectivity_free[0]);
+    CHECK_FOR_PARAMETER("infectivity_free_B",infectivity_free[1]);
+    CHECK_FOR_PARAMETER("infectivity_free_AB",infectivity_free[2]);
     CHECK_FOR_PARAMETER("cell_div",cell_div);
-    CHECK_FOR_PARAMETER("inf_cell_death",inf_cell_death);
+    CHECK_FOR_PARAMETER("inf_cell_death_A",inf_cell_death[0]);
+    CHECK_FOR_PARAMETER("inf_cell_death_B",inf_cell_death[1]);
+    CHECK_FOR_PARAMETER("inf_cell_death_AB",inf_cell_death[2]);
     CHECK_FOR_PARAMETER("viral_lag",viral_lag);
     CHECK_FOR_PARAMETER("vir_prod_rate_mean",vir_prod_rate_mean);
     CHECK_FOR_PARAMETER("diff_rate_virus",diff_rate_virus);
     CHECK_FOR_PARAMETER("freevirus_decay",freevirus_decay);
     CHECK_FOR_PARAMETER("neur_drip",neur_drip);
+    CHECK_FOR_PARAMETER("neur_infect",neur_infect);
     CHECK_FOR_PARAMETER("trm_decay",trm_decay);
     CHECK_FOR_PARAMETER("trm_conv_rate",trm_conv_rate);
     CHECK_FOR_PARAMETER("trm_dbl",trm_dbl);
     CHECK_FOR_PARAMETER("tem_trafficking",tem_trafficking);
     CHECK_FOR_PARAMETER("tem_exiting",tem_exiting);
     CHECK_FOR_PARAMETER("tem_delay",tem_delay);
+
+    CHECK_FOR_PARAMETER("prob_coinfect",prob_coinfect);
+    CHECK_FOR_PARAMETER("prob_recomb",prob_recomb);
 
     CHECK_FOR_PARAMETER("hsv_fract",hsv_fract);
     CHECK_FOR_PARAMETER("psi",psi);
@@ -477,7 +496,6 @@ void set_default_settings(global_settings *settings){
 	settings->refr_freq=0.1;  // frequency for screen capture
 	settings->data_freq=0.1;  // frequency for data capture
 
-	settings->panels=4;  
 	settings->save_plot_data=1;  // save cell/t-cell/viral data for R-style plots
 	settings->save_ratio_data=0;  // save e/t ratio data for R-style plots
 	settings->save_state_files=0;  // save cell&cyto state files during plotting
@@ -488,7 +506,10 @@ void set_default_settings(global_settings *settings){
 	//Place virus
 	settings->place_virus_type=INFECTED_PRODUCER;
 	settings->place_virus_num=1000;
-	settings->start_plaques=1;
+	settings->start_plaques=NUM_STRAINS;
+	settings->max_start_strains=NUM_STRAINS;
+	settings->start_neur_strain=0;
+	settings->max_neur_drips=1;
 	
 	//TRM_HSV & TRM_BYST
 	settings->trm_init=GAUSSIAN; //random or gaussian
@@ -554,18 +575,24 @@ void set_default_parameters(global_parameters *parameters){
 	
 	//Uninfected cells
 	parameters->uninf_cell_death=0;	//Rate of uninfected cell death 
-	parameters->infectivity_free=0.1;				//Infectivity (per virus per cell per day), will get multiplied by number of free viruses at the site
+	for (int s=0; s < NUM_STRAINS; s++)
+	    parameters->infectivity_free[s]=0.1;				//Infectivity (per virus per cell per day), will get multiplied by number of free viruses at the site
+
 	parameters->cell_div=0.077; 					//Rate of generation of new susceptible cells (repop of empty sites)
 	
 	//Infected cells
-	parameters->inf_cell_death=1.25;			//Rate of infected cell death due to infection
+	parameters->inf_cell_death[0]=1.25;			//Rate of infected cell death due to infection (strain A)
+	parameters->inf_cell_death[1]=1.25;			//Rate of infected cell death due to infection (strain B)
+	parameters->inf_cell_death[2]=0.25;			//Rate of infected cell death due to infection (strain AB)
+
 	parameters->viral_lag=8;						  //Rate at which inf non-producer becomes viral producing cell (per cell per day)
 	parameters->vir_prod_rate_mean=100000;	//Rate at which an infected cell produces free virus (per cell per day, mean and sd)
 	
 	//Virus
 	parameters->diff_rate_virus=12; 						  //Rate of diffusion of free virus (sites moved per day, depends on diffusivity, size of virion, viscosity of medium, etc)
 	parameters->freevirus_decay=8.8;		//Rate of decay of free virus (per day)
-	parameters->neur_drip=0;						  //Rate of arrival of virus from neurons (per site per day)
+	parameters->neur_drip=0;			//Rate of arrival of virus from neurons (per site per day)
+	parameters->neur_infect=0;			//Rate of cellular infection from neurons (per site per day)
 
 	//T-cells
 	parameters->trm_decay=0;	//Death rate of TRMs in absence of Ag (per site per day, default = 1E-3)
@@ -697,19 +724,28 @@ void alloc_grid(global_settings *settings,global_dynamics *dynamics){
 	}
 	dynamics->t_cell_cyto_dur = t_cell_cyto_dur;
 	
-	int **viral_matrix = (int **)my_malloc(settings->L * sizeof (int*));
+	int ***viral_matrix = (int ***)my_malloc(NUM_STRAINS * sizeof (int**));
 	if (viral_matrix == NULL)
 	{
 	    fprintf(stderr,"Encountered a problem creating viral_matrix Matrix. Exiting.");
 	    exit(1);
 	}
-	for (int i=0; i < settings->L; i++)
+	for (int i=0; i < NUM_STRAINS; i++)
 	{
-	    viral_matrix[i] = (int *)my_malloc(settings->L * sizeof (int));
+	    viral_matrix[i] = (int **)my_malloc(settings->L * sizeof (int *));
 	    if (viral_matrix[i] == NULL)
 	    {
 		fprintf(stderr,"Encountered a problem creating viral_matrix Matrix. Exiting.");
 		exit(1);
+	    }
+	    for (int j=0; j < settings->L; j++)
+	    {
+		viral_matrix[i][j] = (int *)my_malloc(settings->L * sizeof (int));
+		if (viral_matrix[i][j] == NULL)
+		{
+		    fprintf(stderr,"Encountered a problem creating viral_matrix Matrix. Exiting.");
+		    exit(1);
+		}
 	    }
 	}
 	dynamics->viral_matrix = viral_matrix;
@@ -732,19 +768,28 @@ void alloc_grid(global_settings *settings,global_dynamics *dynamics){
 
 	dynamics->cytokine_matrix = cytokine_matrix;
 	
-	int **delta_viral_matrix = (int **)my_malloc(settings->L * sizeof (int*));
+	int ***delta_viral_matrix = (int ***)my_malloc(NUM_STRAINS * sizeof (int **));
 	if (delta_viral_matrix == NULL)
 	{
 	    fprintf(stderr,"Encountered a problem creating delta_viral_matrix Matrix. Exiting.");
 	    exit(1);
 	}
-	for (int i=0; i < settings->L; i++)
+	for (int i=0; i < NUM_STRAINS; i++)
 	{
-	    delta_viral_matrix[i] = (int *)my_malloc(settings->L * sizeof (int));
+	    delta_viral_matrix[i] = (int **)my_malloc(settings->L * sizeof (int *));
 	    if (delta_viral_matrix[i] == NULL)
 	    {
 		fprintf(stderr,"Encountered a problem creating delta_viral_matrix Matrix. Exiting.");
 		exit(1);
+	    }
+	    for (int j=0; j < settings->L; j++)
+	    {
+		delta_viral_matrix[i][j] = (int *)my_malloc(settings->L * sizeof (int));
+		if (delta_viral_matrix[i][j] == NULL)
+		{
+		    fprintf(stderr,"Encountered a problem creating delta_viral_matrix Matrix. Exiting.");
+		    exit(1);
+		}
 	    }
 	}
 	dynamics->delta_viral_matrix = delta_viral_matrix;
@@ -779,9 +824,20 @@ void init_grid(int runnum, global_settings *settings,global_parameters *paramete
 	dynamics->time=0;
 	dynamics->susceptible_cells=0;
 	dynamics->infected_nonprodcells=0;
+	dynamics->infn_A=0;
+	dynamics->infn_B=0;
+	dynamics->infn_ABn=0;
+	dynamics->infn_ABr=0;
 	dynamics->infected_prodcells=0;
+	dynamics->infp_A=0;
+	dynamics->infp_B=0;
+	dynamics->infp_ABn=0;
+	dynamics->infp_ABr=0;
 	dynamics->dead_cells=0;
 	dynamics->virions=0;
+	dynamics->virionsA=0;
+	dynamics->virionsB=0;
+	dynamics->virionsAB=0;
 	dynamics->pat_hsv=0;
 	dynamics->pat_byst=0;
 	dynamics->act_hsv=0;
@@ -816,12 +872,17 @@ void clear_counts(global_settings *settings,global_parameters *parameters,global
 	for (int i=0; i < settings->L; i++)
 	    for (int j=0; j < settings->L; j++) {
 	        dynamics->cytokine_matrix[i][j]=0;
-	        dynamics->viral_matrix[i][j]=0;
 		dynamics->cell_state[i][j]=EMPTY;
 		dynamics->t_cell_state[i][j]=EMPTY;
 		dynamics->t_cell_potential[i][j]=parameters->max_tcell_div;
 		dynamics->t_cell_cyto_dur[i][j]=parameters->max_cyt_days;
 	    }
+
+	for (int s=0; s < NUM_STRAINS; s++)
+	    for (int i=0; i < settings->L; i++)
+		for (int j=0; j < settings->L; j++)
+		    dynamics->viral_matrix[s][i][j]=0;
+
 	dynamics->tot_infs=0;
 	dynamics->tot_virons=0;
 	dynamics->cyto_kills=0;
@@ -838,8 +899,11 @@ void clear_deltas(global_settings *settings,global_dynamics *dynamics) {
 	for (int i=0; i < settings->L; i++)
 	    for (int j=0; j < settings->L; j++) {
 	        dynamics->delta_cytokine_matrix[i][j]=0;
-	        dynamics->delta_viral_matrix[i][j]=0;
 	    }
+	for (int s=0; s < NUM_STRAINS; s++)
+	    for (int i=0; i < settings->L; i++)
+		for (int j=0; j < settings->L; j++)
+		    dynamics->delta_viral_matrix[s][i][j]=0;
 }
 
 // apply deltas associated with a new time step 
@@ -848,9 +912,10 @@ void propagate_deltas(global_settings *settings,global_dynamics *dynamics) {
 	    for (int j=0; j < settings->L; j++)
 	        dynamics->cytokine_matrix[i][j] =MAX(0,dynamics->cytokine_matrix[i][j] + dynamics->delta_cytokine_matrix[i][j]);
 
-	for (int i=0; i < settings->L; i++)
-	    for (int j=0; j < settings->L; j++)
-	        dynamics->viral_matrix[i][j]=MAX(0,dynamics->viral_matrix[i][j] + dynamics->delta_viral_matrix[i][j]);
+	for (int s=0; s < NUM_STRAINS; s++)
+	    for (int i=0; i < settings->L; i++)
+		for (int j=0; j < settings->L; j++)
+		    dynamics->viral_matrix[s][i][j]=MAX(0,dynamics->viral_matrix[s][i][j] + dynamics->delta_viral_matrix[s][i][j]);
 
 	for (int i=0; i < settings->L; i++)
 	    for (int j=0; j < settings->L; j++)
@@ -887,26 +952,38 @@ void place_virus(global_settings *settings, global_dynamics *dynamics){
       return; //do nothing and exit
 
     if(settings->place_virus_type==SINGLE_POINT){ //place virus at the center of the grid
-      dynamics->viral_matrix[settings->L/2][settings->L/2]=settings->place_virus_num; 
+      dynamics->viral_matrix[0][settings->L/2][settings->L/2]=settings->place_virus_num; 
       
     }else if(settings->place_virus_type==RANDOM){ //virus spread randomly on grid
 
+      int s=0;
       for (int plaqs=0; plaqs<settings->start_plaques;plaqs++) {
 	  int i = gsl_rng_uniform_int(settings->ur,settings->L);
 	  int j = gsl_rng_uniform_int(settings->ur,settings->L);
-	  dynamics->viral_matrix[i][j]=settings->place_virus_num;
+	  dynamics->viral_matrix[s][i][j]=settings->place_virus_num;
+	  s++;
+	  if (s >= settings->max_start_strains) s=0;
       }
       
     }else if(settings->place_virus_type==INFECTED_PRODUCER){ //place infected cell(s) instead of virus
       if(settings->start_plaques==1){ //at the center of the grid
-	dynamics->cell_state[settings->L/2][settings->L/2]=INFP; 
+	dynamics->cell_state[settings->L/2][settings->L/2]=INFP_A; 
 	dynamics->tot_infs++;
       }else{ //randomly on the grid
+	int s=0;
 	for (int plaqs=0; plaqs<settings->start_plaques;plaqs++) {
 	    int i = gsl_rng_uniform_int(settings->ur,settings->L);
 	    int j = gsl_rng_uniform_int(settings->ur,settings->L);
-	    dynamics->cell_state[i][j]=INFP;
+	    if (s==0)
+		dynamics->cell_state[i][j]=INFP_A;
+	    else if (s==1)
+		dynamics->cell_state[i][j]=INFP_B;
+	    else
+		dynamics->cell_state[i][j]=INFP_ABr;
+
 	    dynamics->tot_infs++;
+	    s++;
+	    if (s >= settings->max_start_strains) s=0;
 	}
       }
     }
@@ -1434,8 +1511,19 @@ void place_tcells(global_settings *settings, global_parameters *parameters, glob
 }
 
 //NEURONAL DRIP (future feature - untested in this single episode version)
-void neur_drip(int i,int j, global_dynamics *dynamics){
-	dynamics->delta_viral_matrix[i][j]+=1;
+void neur_drip(int s, int i,int j, global_dynamics *dynamics){
+	dynamics->delta_viral_matrix[s][i][j]+=1;
+}
+
+//NEURONAL INFECT (future feature - untested in this single episode version)
+void neur_infect(int s, int i,int j, global_dynamics *dynamics){
+	fprintf(stdout,"Infected cell at site: %d,%d with type %d at time = %g\n,",i,j,s,dynamics->time);
+	if (s==0)
+	    dynamics->cell_state[i][j] = INFP_A;
+	else if (s==1)
+	    dynamics->cell_state[i][j] = INFP_B;
+	else 
+	    dynamics->cell_state[i][j] = INFP_ABr;
 }
 
 //Calculates plaque diameter in mm
@@ -1476,21 +1564,21 @@ gsl_matrix *compute_gaussian(double mask_range,double sig,double amp){
 }
 
 //DIFFUSION of free virus
-void diffusion_virus(global_settings *settings,int i, int j,gsl_matrix *gaussian_mask,global_parameters *parameters, global_dynamics *dynamics){
+void diffusion_virus(global_settings *settings,int s,int i, int j,gsl_matrix *gaussian_mask,global_parameters *parameters, global_dynamics *dynamics){
   bool got_neighbor;
   int nbr[2];
 
-  dynamics->delta_viral_matrix[i][j]-=dynamics->viral_matrix[i][j]; 
-  if(dynamics->viral_matrix[i][j]==1){
+  dynamics->delta_viral_matrix[s][i][j]-=dynamics->viral_matrix[s][i][j]; 
+  if(dynamics->viral_matrix[s][i][j]==1){
     got_neighbor=pick_nbr(settings,i,j,nbr);
     if(got_neighbor){
-	    dynamics->delta_viral_matrix[nbr[0]][nbr[1]]+=1;
+	    dynamics->delta_viral_matrix[s][nbr[0]][nbr[1]]+=1;
     }
   }else{
-	double burst = dynamics->viral_matrix[i][j];
+	double burst = dynamics->viral_matrix[s][i][j];
 	//virus at focal site [i][j] will be spread across diffusion range
 	// note: some will be placed at [i][j] as well
-	distrib_progeny(settings,parameters,dynamics,VIRUS,i,j,burst,gaussian_mask); 
+	distrib_progeny(settings,parameters,dynamics,VIRUS,s, i,j,burst,gaussian_mask); 
   }
 }
 
@@ -1599,7 +1687,7 @@ void diffusion_cyt(global_settings *settings,int i, int j,gsl_matrix *gaussian_m
     //virus at focal site [i][j] will be spread across diffusion range
     // note: some will be placed at [i][j] as well
     dynamics->delta_cytokine_matrix[i][j]-=dynamics->cytokine_matrix[i][j]; 
-    distrib_progeny(settings,parameters,dynamics,CYTOKINE,i,j,burst,gaussian_mask); 
+    distrib_progeny(settings,parameters,dynamics,CYTOKINE,0,i,j,burst,gaussian_mask); 
 }
 
 bool close_to_plaq(int i,int j, global_settings *settings,global_parameters *parameters, global_dynamics *dynamics){
@@ -1610,7 +1698,10 @@ bool close_to_plaq(int i,int j, global_settings *settings,global_parameters *par
     int jmax=MIN(j+temp2,settings->L-1);
     for (int row=imin; row <= imax; row++)
 	for (int col=jmin; col <= jmax; col++) {
-	    if (dynamics->cell_state[row][col]>=INFP) {
+	    if (dynamics->cell_state[row][col] == INFP_A ||
+		dynamics->cell_state[row][col] == INFP_B ||
+		dynamics->cell_state[row][col] == INFP_ABn ||
+		dynamics->cell_state[row][col] == INFP_ABr) {
 		double dist_to_plaq=sqrt((double)((i-row)*(i-row)+(j-col)*(j-col)));
 		if (dist_to_plaq <= parameters->limit_cyt_spread)
 		    return true;
@@ -1622,7 +1713,7 @@ bool close_to_plaq(int i,int j, global_settings *settings,global_parameters *par
 //set into delat arrays for distributing at the end of the processing loop
 //(avoids double diffusing) 
 void distrib_progeny(global_settings *settings,global_parameters *parameters,
-	global_dynamics *dynamics, int what, int i, int j,double burst,
+	global_dynamics *dynamics, int what, int s, int i, int j,double burst,
 	gsl_matrix *gaussian_mask){
     int dist_range = parameters->diff_range;
     int temp2=(dist_range-1)/2;
@@ -1640,7 +1731,7 @@ void distrib_progeny(global_settings *settings,global_parameters *parameters,
 		int this_batch = 
 		    round(burst * gsl_matrix_get(gaussian_mask,i1,j1));
 		distributed+=this_batch;
-		dynamics->delta_viral_matrix[row][col]+=this_batch;
+		dynamics->delta_viral_matrix[s][row][col]+=this_batch;
 	    } else if (parameters->limit_cyt_spread== 0 ||
 			close_to_plaq(row,col,settings,parameters,dynamics)){
 		double this_batch = 
@@ -1656,10 +1747,10 @@ void distrib_progeny(global_settings *settings,global_parameters *parameters,
 	    int col=jmin+gsl_rng_uniform_int(settings->ur,jmax-jmin+1);
 
 	    if (distributed>burst) {
-		dynamics->delta_viral_matrix[row][col]--;
+		dynamics->delta_viral_matrix[s][row][col]--;
 		extra--;
 	    } else {
-		dynamics->delta_viral_matrix[row][col]++;
+		dynamics->delta_viral_matrix[s][row][col]++;
 		extra++;
 	    }
 	}
@@ -1725,22 +1816,34 @@ int detect_inf(global_settings *settings, global_dynamics *dynamics,
 	for (int row=imin; row <= imax; row++)
 	    for (int col=jmin; col <= jmax; col++)
 	    {
-		if (dynamics->cell_state[row][col] == INFP ||
-		    dynamics->cell_state[row][col] == INFN)
+		if (dynamics->cell_state[row][col] == INFP_A ||
+		    dynamics->cell_state[row][col] == INFP_B ||
+		    dynamics->cell_state[row][col] == INFP_ABn ||
+		    dynamics->cell_state[row][col] == INFP_ABr ||
+		    dynamics->cell_state[row][col] == INFN_A ||
+		    dynamics->cell_state[row][col] == INFN_B ||
+		    dynamics->cell_state[row][col] == INFN_ABn ||
+		    dynamics->cell_state[row][col] == INFN_ABr)
 		    return 1;
 	    }
       }else if(what==INFP){
 	for (int row=imin; row <= imax; row++)
 	    for (int col=jmin; col <= jmax; col++)
 	    {
-		if (dynamics->cell_state[row][col] == INFP)
+		if (dynamics->cell_state[row][col] == INFP_A ||
+		    dynamics->cell_state[row][col] == INFP_B ||
+		    dynamics->cell_state[row][col] == INFP_ABn ||
+		    dynamics->cell_state[row][col] == INFP_ABr)
 		    return 1;
 	    }
       }else if(what==INFN){
 	for (int row=imin; row <= imax; row++)
 	    for (int col=jmin; col <= jmax; col++)
 	    {
-		if (dynamics->cell_state[row][col] == INFN)
+		if (dynamics->cell_state[row][col] == INFN_A ||
+		    dynamics->cell_state[row][col] == INFN_B ||
+		    dynamics->cell_state[row][col] == INFN_ABn ||
+		    dynamics->cell_state[row][col] == INFN_ABr)
 		    return 1;
 	    }
       }else if(what==ALL_CELLS){
@@ -1851,8 +1954,14 @@ int detect_inf(global_settings *settings, global_dynamics *dynamics,
 	for (int row=imin; row <= imax; row++)
 	    for (int col=jmin; col <= jmax; col++)
 	    {
-		if (dynamics->cell_state[row][col] == INFP ||
-		    dynamics->cell_state[row][col] == INFN)
+		if (dynamics->cell_state[row][col] == INFP_A ||
+		    dynamics->cell_state[row][col] == INFP_B ||
+		    dynamics->cell_state[row][col] == INFP_ABn ||
+		    dynamics->cell_state[row][col] == INFP_ABr ||
+		    dynamics->cell_state[row][col] == INFN_A ||
+		    dynamics->cell_state[row][col] == INFN_B ||
+		    dynamics->cell_state[row][col] == INFN_ABn ||
+		    dynamics->cell_state[row][col] == INFN_ABr)
 		    det_inf++;
 	    }
 	if (return_pos==SUM || det_inf == 0) return det_inf;
@@ -1861,8 +1970,14 @@ int detect_inf(global_settings *settings, global_dynamics *dynamics,
 	for (int row=imin; row <= imax; row++)
 	    for (int col=jmin; col <= jmax; col++)
 	    {
-		if ((dynamics->cell_state[row][col] == INFP ||
-		    dynamics->cell_state[row][col] == INFN)
+		if ((dynamics->cell_state[row][col] == INFP_A ||
+		    dynamics->cell_state[row][col] == INFP_B ||
+		    dynamics->cell_state[row][col] == INFP_ABn ||
+		    dynamics->cell_state[row][col] == INFP_ABr ||
+		    dynamics->cell_state[row][col] == INFN_A ||
+		    dynamics->cell_state[row][col] == INFN_B ||
+		    dynamics->cell_state[row][col] == INFN_ABn ||
+		    dynamics->cell_state[row][col] == INFN_ABr)
 			&& current++ == instance)
 		{
 		    coords[0] = row;
@@ -1874,7 +1989,10 @@ int detect_inf(global_settings *settings, global_dynamics *dynamics,
 	for (int row=imin; row <= imax; row++)
 	    for (int col=jmin; col <= jmax; col++)
 	    {
-		if (dynamics->cell_state[row][col] == INFP)
+		if (dynamics->cell_state[row][col] == INFP_A ||
+		    dynamics->cell_state[row][col] == INFP_B ||
+		    dynamics->cell_state[row][col] == INFP_ABn ||
+		    dynamics->cell_state[row][col] == INFP_ABr)
 		    det_inf++;
 	    }
 	if (return_pos==SUM || det_inf == 0) return det_inf;
@@ -1883,7 +2001,10 @@ int detect_inf(global_settings *settings, global_dynamics *dynamics,
 	for (int row=imin; row <= imax; row++)
 	    for (int col=jmin; col <= jmax; col++)
 	    {
-		if ((dynamics->cell_state[row][col] == INFP)
+		if ((dynamics->cell_state[row][col] == INFP_A ||
+		    dynamics->cell_state[row][col] == INFP_B ||
+		    dynamics->cell_state[row][col] == INFP_ABn ||
+		    dynamics->cell_state[row][col] == INFP_ABr)
 			&& current++ == instance)
 		{
 		    coords[0] = row;
@@ -1895,7 +2016,10 @@ int detect_inf(global_settings *settings, global_dynamics *dynamics,
 	for (int row=imin; row <= imax; row++)
 	    for (int col=jmin; col <= jmax; col++)
 	    {
-		if (dynamics->cell_state[row][col] == INFN)
+		if (dynamics->cell_state[row][col] == INFN_A ||
+		    dynamics->cell_state[row][col] == INFN_B ||
+		    dynamics->cell_state[row][col] == INFN_ABn ||
+		    dynamics->cell_state[row][col] == INFN_ABr)
 		    det_inf++;
 	    }
 	if (return_pos==SUM || det_inf == 0) return det_inf;
@@ -1904,7 +2028,10 @@ int detect_inf(global_settings *settings, global_dynamics *dynamics,
 	for (int row=imin; row <= imax; row++)
 	    for (int col=jmin; col <= jmax; col++)
 	    {
-		if ((dynamics->cell_state[row][col] == INFN)
+		if ((dynamics->cell_state[row][col] == INFN_A ||
+		    dynamics->cell_state[row][col] == INFN_B ||
+		    dynamics->cell_state[row][col] == INFN_ABn ||
+		    dynamics->cell_state[row][col] == INFN_ABr)
 			&& current++ == instance)
 		{
 		    coords[0] = row;
@@ -2235,8 +2362,8 @@ void tcell_div(int i, int j,global_settings *settings, global_parameters *parame
 }
 
 //DECAY of free virus
-void viral_decay(int i, int j,global_parameters *parameters, global_dynamics *dynamics){
-    dynamics->viral_matrix[i][j]=MAX(0,dynamics->viral_matrix[i][j]*exp(-parameters->freevirus_decay/parameters->max_rate));
+void viral_decay(int s,int i, int j,global_parameters *parameters, global_dynamics *dynamics){
+    dynamics->viral_matrix[s][i][j]=MAX(0,dynamics->viral_matrix[s][i][j]*exp(-parameters->freevirus_decay/parameters->max_rate));
 }
 
 //DECAY of cytokine_matrix
@@ -2248,6 +2375,60 @@ void cyt_uptake(int i, int j,global_parameters *parameters, global_dynamics *dyn
   dynamics->cytokine_matrix[i][j]=MAX(0,dynamics->cytokine_matrix[i][j]*exp(-parameters->cyt_uptake/parameters->max_rate));
 }
 
+void set_infection_type(int s, int i, int j, global_settings *settings, global_parameters *parameters, global_dynamics *dynamics, bool *new_infection){
+
+      // Let A infect susc & change B into ABn or ABr
+      if (s==0 && dynamics->cell_state[i][j]!=INFN_A && dynamics->cell_state[i][j]!=INFN_ABn && dynamics->cell_state[i][j]!=INFN_ABr)
+      {
+	  if (dynamics->cell_state[i][j]!=INFN_B)
+	  {
+	      dynamics->cell_state[i][j]=INFN_A; //becomes an infected cell (strain A)
+	      *new_infection=true;
+	  }
+	  else if (gsl_rng_uniform(settings->ur) < parameters->prob_coinfect)
+	  {
+	      if (gsl_rng_uniform(settings->ur) < parameters->prob_recomb)
+		  dynamics->cell_state[i][j]=INFN_ABr; //becomes an infected cell (strain ABr)
+	      else
+		  dynamics->cell_state[i][j]=INFN_ABn; //becomes an infected cell (strain ABn)
+	      *new_infection=true;
+	  }
+      }
+      // Let B infect susc & change A into ABn or ABr
+      else if (s==1 && dynamics->cell_state[i][j]!=INFN_B && dynamics->cell_state[i][j]!=INFN_ABn && dynamics->cell_state[i][j]!=INFN_ABr)
+      {
+	  if (dynamics->cell_state[i][j]!=INFN_A)
+	  {
+	      dynamics->cell_state[i][j]=INFN_B; //becomes an infected cell (strain B)
+	      *new_infection=true;
+	  }
+	  else if (gsl_rng_uniform(settings->ur) < parameters->prob_coinfect)
+	  {
+	      if (gsl_rng_uniform(settings->ur) < parameters->prob_recomb)
+		  dynamics->cell_state[i][j]=INFN_ABr; //becomes an infected cell (strain ABr)
+	      else
+		  dynamics->cell_state[i][j]=INFN_ABn; //becomes an infected cell (strain ABn)
+	      *new_infection=true;
+	  }
+      }
+      // Let AB recomb virus coinfect other types & if so switch to recomb (or just susc as ABr)
+      else if (s==2) // AB recomb virus (check for coinfection w/ other types & if so switch to recomb
+      {
+	  if (dynamics->cell_state[i][j]==INFN_A || dynamics->cell_state[i][j]==INFN_B || dynamics->cell_state[i][j]==INFN_ABn)
+	  {
+		if (gsl_rng_uniform(settings->ur) < parameters->prob_coinfect)
+		{
+		  dynamics->cell_state[i][j]=INFN_ABr; //becomes an infected cell (strain ABr)
+		  *new_infection=true;
+		}
+	  }
+	  else
+	  {
+		dynamics->cell_state[i][j]=INFN_ABr; //becomes an infected cell (strain ABr)
+		*new_infection=true;
+	  }
+      }
+}
 // 2. SIMULATION
 void simulation(int runnum, global_settings *settings,global_parameters *parameters,global_dynamics *dynamics){
     
@@ -2282,6 +2463,9 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
     next_screen_capture += settings->refr_freq;
     next_data_capture += settings->data_freq;
 
+    int last_neuro_type=settings->start_neur_strain;  // allows any strain to interact with starting plaques
+    int num_drips=0;
+
     while(dynamics->num_updates<dynamics->tot_updates){
 	
 	clear_deltas(settings,dynamics);
@@ -2293,8 +2477,24 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 	    double dice_drip=gsl_rng_uniform(settings->ur); // neuro drip
 	    int drip_x=gsl_rng_uniform_int(settings->ur,settings->L);
 	    int drip_y=gsl_rng_uniform_int(settings->ur,settings->L);
-	    if(dice_drip<=parameters->neur_drip/parameters->max_rate){
-		    neur_drip(drip_x,drip_y,dynamics);
+	    if(num_drips < settings->max_neur_drips && dice_drip<=parameters->neur_drip/parameters->max_rate){
+		  neur_drip(last_neuro_type,drip_x,drip_y,dynamics);
+		  last_neuro_type++;
+		  if (last_neuro_type >= settings->max_start_strains) last_neuro_type=0;
+		  num_drips++;
+	    }
+	}
+      
+	////Cellular infection from neuron (DOES NOT PRECLUDE OTHER ACTIONS)
+	if (parameters->neur_infect!=0 ) {
+	    double dice_infect=gsl_rng_uniform(settings->ur); // neuro infect
+	    int infect_x=gsl_rng_uniform_int(settings->ur,settings->L);
+	    int infect_y=gsl_rng_uniform_int(settings->ur,settings->L);
+	    if(num_drips < settings->max_neur_drips && dice_infect<=parameters->neur_infect/parameters->max_rate){
+		  neur_infect(last_neuro_type,infect_x,infect_y,dynamics);
+		  last_neuro_type++;
+		  if (last_neuro_type >= settings->max_start_strains) last_neuro_type=0;
+		  num_drips++;
 	    }
 	}
       
@@ -2469,14 +2669,20 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 			    dynamics->cell_state[i][j]=SUSCEPTIBLE;
 		    }
     
-	    //State 1: uninfected, susceptible cell (cytokines can reduce
+	    //State 1: susceptible or infected cell (cytokines can reduce
 	    //infectivity while in this state buit only for a period set using
 	    // parameters->cyt_prot_expiration (1 day?)
+	    // infected cells can be coinfected
 
-	    //State 2: no longer cytokine protectable
+	    //State 2: infection/production
 		}else if(dynamics->cell_state[i][j]==SUSCEPTIBLE ||
+			dynamics->cell_state[i][j]==INFN_A ||
+			dynamics->cell_state[i][j]==INFN_B ||
+			dynamics->cell_state[i][j]==INFN_ABn ||
+			dynamics->cell_state[i][j]==INFN_ABr ||
 			dynamics->cell_state[i][j]==UNPROTECTABLE){
-		    if(dynamics->cell_state[i][j]==SUSCEPTIBLE &&
+
+		    if(dynamics->cell_state[i][j]!=UNPROTECTABLE &&
 			parameters->cyt_effect_infectivity){
 			double dice_prot=gsl_rng_uniform(settings->ur);
 			if (dynamics->cytokine_matrix[i][j] > 0 &&
@@ -2496,40 +2702,52 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 		    }
 		
 		    //Event 1.1: infection due to free virus at the site
-		    if(dynamics->viral_matrix[i][j]>0){
-		      //with cytokine effects
-		      if(parameters->cyt_effect_infectivity==1) {
-			if(dice<=(
-			      (parameters->infectivity_free*cytokine_factor)*
-			      dynamics->viral_matrix[i][j])/parameters->max_rate){
+		    bool virus_present=false;
+		    bool new_infection=false;
+		    for (int s=0; s < NUM_STRAINS; s++)
+		    {
+		      if(dynamics->viral_matrix[s][i][j]>0){
+			virus_present=true;
 
-			dynamics->cell_state[i][j]=INFN; //becomes an infected cell
-			dynamics->tot_infs++;
-			dynamics->delta_viral_matrix[i][j]--;
-		      //without cytokine effects
-			  } else if(dice<=(
-			      parameters->infectivity_free*
-			      dynamics->viral_matrix[i][j])/
-			      parameters->max_rate){
-			    infections_avoided++;
-			  }
-		      }else if(dice<=(
-			      parameters->infectivity_free*
-			      dynamics->viral_matrix[i][j])/
-			      parameters->max_rate){
+			//with cytokine effects
+			if(parameters->cyt_effect_infectivity==1) {
+			  if(dice<=(
+				(parameters->infectivity_free[s]*cytokine_factor)*
+				dynamics->viral_matrix[s][i][j])/parameters->max_rate){
 
-			dynamics->cell_state[i][j]=INFN; //becomes an infected cell
-			dynamics->tot_infs++;
-			dynamics->delta_viral_matrix[i][j]--;
+			      set_infection_type(s, i, j, settings, parameters, dynamics, &new_infection);
+			//without cytokine effects
+			    } else if(dice<=(
+				parameters->infectivity_free[s]*
+				dynamics->viral_matrix[s][i][j])/
+				parameters->max_rate){
+			      infections_avoided++;
+			    }
+			}else if(dice<=(
+				parameters->infectivity_free[s]*
+				dynamics->viral_matrix[s][i][j])/
+				parameters->max_rate){
+			      set_infection_type(s, i, j, settings, parameters, dynamics, &new_infection);
+			}
+			if (new_infection)
+			{
+			  dynamics->tot_infs++;
+			  dynamics->delta_viral_matrix[s][i][j]--;
+			}
+			new_infection=false;
 		      }
+		    }
 
 		    //Event 1.2: apoptosis
 		      //without cytokine effects
-		    }else if((parameters->cyt_effect_uninfcelldeath==0||
-			dynamics->cytokine_matrix[i][j] == 0)&&
+		    if (!virus_present)
+		    {
+			if((parameters->cyt_effect_uninfcelldeath==0||
+			    dynamics->cytokine_matrix[i][j] == 0)&&
 			    
 			     dice<=(parameters->uninf_cell_death)/parameters->max_rate){
-		      dynamics->cell_state[i][j]=4;
+			  dynamics->cell_state[i][j]=4;
+			}
 
 		      //with cytokine effects
 		    }else if(parameters->cyt_effect_uninfcelldeath>0&&
@@ -2542,75 +2760,110 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 		      dynamics->cyto_kills++;
 		    } 
 	
-		//State 3: infected cell (non-virus producing, not presenting Ag)
-		}else if(dynamics->cell_state[i][j]==INFN){					
-		    //Event 2.0: produce cytokine
-		    dynamics->delta_cytokine_matrix[i][j]+=
-			MAX(0, gsl_ran_weibull(settings->ur,parameters->cyt_secretion_rate_infcell_mean/parameters->max_rate,5.0));
+		//State 2b: infected cell (non-virus producing, not presenting Ag)
+		    if (dynamics->cell_state[i][j] == INFN_A ||
+			dynamics->cell_state[i][j] == INFN_B ||
+			dynamics->cell_state[i][j] == INFN_ABn ||
+			dynamics->cell_state[i][j] == INFN_ABr) {
 
-		  //Event 2.1: become a virus-producing cell
-		      //without cytokine effects
-		  if(parameters->cyt_effect_lag==0&&
-		      dice_cell_lag<=(parameters->viral_lag)/parameters->max_rate){
-		    dynamics->cell_state[i][j]=INFP; //becomes virus-producing infected cell
-		  
-		      //with cytokine effects
-		  }else if(parameters->cyt_effect_lag>0&&
-		      dice_cell_lag<=(parameters->viral_lag*cytokine_factor)/parameters->max_rate){
-		    dynamics->cell_state[i][j]=INFP; //becomes virus-producing infected cell
-				
-			//Event 2.2: dies 
-		  
-	
-		  }else {
-		    if (dynamics->cytokine_matrix[i][j] > 0) {
-			cytokine_factor = new_cyt_effect(dynamics->cytokine_matrix[i][j],
-			  parameters->inf_ic50);
-		    } else {
-			cytokine_factor = 1;
-		    }
+			double inf_cell_death=0;
+			if (dynamics->cell_state[i][j] == INFN_ABr)
+			    inf_cell_death = parameters->inf_cell_death[2];
+			else if (dynamics->cell_state[i][j] == INFN_B)
+			    inf_cell_death = parameters->inf_cell_death[1];
+			else 
+			    inf_cell_death = parameters->inf_cell_death[0];
+			//Event 2.0: produce cytokine
+			dynamics->delta_cytokine_matrix[i][j]+=
+			    MAX(0, gsl_ran_weibull(settings->ur,parameters->cyt_secretion_rate_infcell_mean/parameters->max_rate,5.0));
 
-		      //without cytokine effects
-		    if((parameters->cyt_effect_infncelldeath==0 ||
-			    dynamics->cytokine_matrix[i][j] == 0)&&
-			    dice_cell_death<=(parameters->inf_cell_death)/parameters->max_rate){
-			dynamics->cell_state[i][j]=DEAD; //death of infected cell
-			
-		      //with cytokine effects
-		      }else if(parameters->cyt_effect_infncelldeath>0&&
-			    dynamics->cytokine_matrix[i][j] > 0 &&
-			    dice_cell_death<=(((1-cytokine_factor)*
-			    (parameters->cyt_effect_infncelldeath-
-			     parameters->inf_cell_death) + 
-			    parameters->inf_cell_death)/parameters->max_rate)){
-
-			dynamics->cell_state[i][j]=CYTO_KILLED; //death of infected cell		
-			dynamics->cyto_kills++;
-			
-		      //Event 2.3: killed by a T-cell
-		      }else if(parameters->tcell_killing_target==INF){
-			int num_t_cells=detect_inf(settings,dynamics,3,i,j,T_KILL,SUM,coords);
-			
-			if(num_t_cells>0&&dice<=( parameters->tcell_killing_rate*num_t_cells)/parameters->max_rate){
-			    dynamics->cell_state[i][j]=TRM_KILLED; 
-			    dynamics->trm_kills++;
+		      //Event 2.1: become a virus-producing cell
+			  //without cytokine effects
+		      if(parameters->cyt_effect_lag==0&&
+			  dice_cell_lag<=(parameters->viral_lag)/parameters->max_rate){
+			if (dynamics->cell_state[i][j] == INFN_A) dynamics->cell_state[i][j]=INFP_A; //becomes virus-producing infected cell
+			else if (dynamics->cell_state[i][j] == INFN_B) dynamics->cell_state[i][j]=INFP_B; //becomes virus-producing infected cell
+			else if (dynamics->cell_state[i][j] == INFN_ABn) dynamics->cell_state[i][j]=INFP_ABn; //becomes virus-producing infected cell
+			else if (dynamics->cell_state[i][j] == INFN_ABr) dynamics->cell_state[i][j]=INFP_ABr; //becomes virus-producing infected cell
+		      
+			  //with cytokine effects
+		      }else if(parameters->cyt_effect_lag>0&&
+			  dice_cell_lag<=(parameters->viral_lag*cytokine_factor)/parameters->max_rate){
+			if (dynamics->cell_state[i][j] == INFN_A) dynamics->cell_state[i][j]=INFP_A; //becomes virus-producing infected cell
+			else if (dynamics->cell_state[i][j] == INFN_B) dynamics->cell_state[i][j]=INFP_B; //becomes virus-producing infected cell
+			else if (dynamics->cell_state[i][j] == INFN_ABn) dynamics->cell_state[i][j]=INFP_ABn; //becomes virus-producing infected cell
+			else if (dynamics->cell_state[i][j] == INFN_ABr) dynamics->cell_state[i][j]=INFP_ABr; //becomes virus-producing infected cell
+				    
+			    //Event 2.2: dies 
+		      
+	    
+		      }else {
+			if (dynamics->cytokine_matrix[i][j] > 0) {
+			    cytokine_factor = new_cyt_effect(dynamics->cytokine_matrix[i][j],
+			      parameters->inf_ic50);
+			} else {
+			    cytokine_factor = 1;
 			}
+
+			  //without cytokine effects
+			if((parameters->cyt_effect_infncelldeath==0 ||
+				dynamics->cytokine_matrix[i][j] == 0)&&
+				dice_cell_death<=(inf_cell_death)/parameters->max_rate){
+			    dynamics->cell_state[i][j]=DEAD; //death of infected cell
+			    
+			  //with cytokine effects
+			  }else if(parameters->cyt_effect_infncelldeath>0&&
+				dynamics->cytokine_matrix[i][j] > 0 &&
+				dice_cell_death<=(((1-cytokine_factor)*
+				(parameters->cyt_effect_infncelldeath-
+				 inf_cell_death) + 
+				inf_cell_death)/parameters->max_rate)){
+
+			    dynamics->cell_state[i][j]=CYTO_KILLED; //death of infected cell		
+			    dynamics->cyto_kills++;
+			    
+			  //Event 2.3: killed by a T-cell
+			  }else if(parameters->tcell_killing_target==INF){
+			    int num_t_cells=detect_inf(settings,dynamics,3,i,j,T_KILL,SUM,coords);
+			    
+			    if(num_t_cells>0&&dice<=( parameters->tcell_killing_rate*num_t_cells)/parameters->max_rate){
+				dynamics->cell_state[i][j]=TRM_KILLED; 
+				dynamics->trm_kills++;
+			    }
+			  }
 		      }
 		  }
 		  
 		//State 3: infected cell (producing virus, presenting Ag)
-		}else if(dynamics->cell_state[i][j]==INFP){
+		} else if (dynamics->cell_state[i][j] == INFP_A ||
+		    dynamics->cell_state[i][j] == INFP_B ||
+		    dynamics->cell_state[i][j] == INFP_ABn ||
+		    dynamics->cell_state[i][j] == INFP_ABr) {
 	
+			double inf_cell_death=0;
+			if (dynamics->cell_state[i][j] == INFP_ABr)
+			    inf_cell_death = parameters->inf_cell_death[2];
+			else if (dynamics->cell_state[i][j] == INFP_B)
+			    inf_cell_death = parameters->inf_cell_death[1];
+			else 
+			    inf_cell_death = parameters->inf_cell_death[0];
 			//Event 3.0: secrete cytokines and virus
 			dynamics->delta_cytokine_matrix[i][j]+=
 			    MAX(0, gsl_ran_weibull(settings->ur,parameters->cyt_secretion_rate_infcell_mean/parameters->max_rate,5.0));
+			int s = gsl_rng_uniform_int(settings->ur,2);
 
 			unsigned long int new_virions =
 			    MAX(0, gsl_ran_weibull(settings->ur,parameters->vir_prod_rate_mean/parameters->max_rate,5.0));
 		      //without cytokine effects
 			if(parameters->cyt_effect_virprod==0 ||
 			    dynamics->cytokine_matrix[i][j] == 0) {
-			    dynamics->delta_viral_matrix[i][j]+=new_virions;
+			    if (dynamics->cell_state[i][j] == INFP_A || dynamics->cell_state[i][j] == INFP_ABn)
+				dynamics->delta_viral_matrix[0][i][j]+=new_virions;
+			    if (dynamics->cell_state[i][j] == INFP_B || dynamics->cell_state[i][j] == INFP_ABn)
+				dynamics->delta_viral_matrix[1][i][j]+=new_virions;
+			    if (dynamics->cell_state[i][j] == INFP_ABr)
+				dynamics->delta_viral_matrix[2][i][j]+=new_virions;
+			    
 			    dynamics->tot_virons+= new_virions;
 			    if (settings->verbose)
 			      fprintf(stderr,"Infected cell %d,%d made virus at t=%3.2lf\n",i,j,dynamics->time);
@@ -2618,8 +2871,12 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 		      //with cytokine effects
 			    cytokine_factor = new_cyt_effect(dynamics->cytokine_matrix[i][j],
 			      parameters->prod_ic50);
-			    dynamics->delta_viral_matrix[i][j]+=
-				new_virions*cytokine_factor;
+			    if (dynamics->cell_state[i][j] == INFP_A || (s==0 && dynamics->cell_state[i][j] == INFP_ABn))
+				dynamics->delta_viral_matrix[0][i][j]+=new_virions*cytokine_factor;
+			    if (dynamics->cell_state[i][j] == INFP_B || (s==1 && dynamics->cell_state[i][j] == INFP_ABn))
+				dynamics->delta_viral_matrix[1][i][j]+=new_virions*cytokine_factor;
+			    if (dynamics->cell_state[i][j] == INFP_ABr)
+				dynamics->delta_viral_matrix[2][i][j]+=new_virions*cytokine_factor;
 
 			    dynamics->tot_virons+= new_virions*cytokine_factor;
 			    virions_avoided += new_virions*cytokine_factor;
@@ -2639,7 +2896,7 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 		      //without cytokine effects
 			if ((parameters->cyt_effect_infpcelldeath==0||
 			    dynamics->cytokine_matrix[i][j] == 0)&&
-			   dice_cell_death<=(parameters->inf_cell_death)/parameters->max_rate){
+			   dice_cell_death<=(inf_cell_death)/parameters->max_rate){
 			  dynamics->cell_state[i][j]=DEAD; //death of infected cell
 			  if (settings->verbose)
 			    fprintf(stderr,"Infected cell %d,%d died at t=%3.2lf\n",i,j,dynamics->time);
@@ -2649,8 +2906,8 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 			    dynamics->cytokine_matrix[i][j] > 0 &&
 			    dice_cell_death<=(((1-cytokine_factor)*
 			    (parameters->cyt_effect_infpcelldeath-
-			     parameters->inf_cell_death) + 
-			    parameters->inf_cell_death)/parameters->max_rate)){
+			     inf_cell_death) + 
+			    inf_cell_death)/parameters->max_rate)){
 
 				dynamics->cell_state[i][j]=CYTO_KILLED; //death of infected cell	
 				dynamics->cyto_kills++;
@@ -2691,16 +2948,19 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 
 		////Cell-free virus
 		////--------------------------------------------
-		if(dynamics->viral_matrix[i][j]>0){
+		for (int s=0; s < NUM_STRAINS; s++)
+		{
+		    if(dynamics->viral_matrix[s][i][j]>0){
 
-		  //Event 0a: Decay
-			viral_decay(i,j,parameters,dynamics);
-		
-			//Event 0b: Diffusion of remaining free virus at site
-			if(dice_v<=parameters->diff_rate_virus/parameters->max_rate){
-				diffusion_virus(settings,i,j,gaussian_mask_vir_diff,parameters,dynamics);}			
-		
-		}			
+		      //Event 0a: Decay
+			    viral_decay(s, i,j,parameters,dynamics);
+		    
+			    //Event 0b: Diffusion of remaining free virus at site
+			    if(dice_v<=parameters->diff_rate_virus/parameters->max_rate){
+				    diffusion_virus(settings,s,i,j,gaussian_mask_vir_diff,parameters,dynamics);}			
+		    
+		    }			
+		}
 	}
 	propagate_deltas(settings,dynamics);
 	
@@ -2719,6 +2979,7 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 	}
 	if(settings->stop_early && dynamics->virions==0 && //dynamics->virions<100 && 
 	   parameters->neur_drip==0 &&
+	   parameters->neur_infect==0 &&
 	   dynamics->infected_prodcells==0){
 	  break;
 	}
@@ -2738,9 +2999,20 @@ void simulation(int runnum, global_settings *settings,global_parameters *paramet
 void compute_totals(global_settings *settings,global_parameters *parameters,global_dynamics *dynamics){
 	dynamics->time=(double)dynamics->num_updates/parameters->max_rate; // time in days!
 	dynamics->virions=0;
+	dynamics->virionsA=0;
+	dynamics->virionsB=0;
+	dynamics->virionsAB=0;
 	dynamics->susceptible_cells=0;
 	dynamics->infected_nonprodcells=0;
+	dynamics->infn_A=0;
+	dynamics->infn_B=0;
+	dynamics->infn_ABn=0;
+	dynamics->infn_ABr=0;
 	dynamics->infected_prodcells=0;
+	dynamics->infp_A=0;
+	dynamics->infp_B=0;
+	dynamics->infp_ABn=0;
+	dynamics->infp_ABr=0;
 	dynamics->dead_cells=0;
 	dynamics->pat_hsv=0;
 	dynamics->pat_byst=0;
@@ -2754,10 +3026,6 @@ void compute_totals(global_settings *settings,global_parameters *parameters,glob
 	for (int i=0; i<settings->L;i++)
 	    for (int j=0; j<settings->L;j++)
 	{
-	    dynamics->virions+=dynamics->viral_matrix[i][j];
-	    if (dynamics->viral_matrix[i][j] > 0)
-		dynamics->viral_cells++;
-
 	    dynamics->cytokine+=dynamics->cytokine_matrix[i][j];
 	    if (dynamics->cytokine_matrix[i][j] > 0)
 		dynamics->cyto_cells++;
@@ -2765,10 +3033,32 @@ void compute_totals(global_settings *settings,global_parameters *parameters,glob
 	    if (dynamics->cell_state[i][j]==SUSCEPTIBLE ||
 		dynamics->cell_state[i][j]==UNPROTECTABLE)
 		dynamics->susceptible_cells++;
-	    if (dynamics->cell_state[i][j]== INFN)
+	    if (dynamics->cell_state[i][j] == INFN_A ||
+		dynamics->cell_state[i][j] == INFN_B ||
+		dynamics->cell_state[i][j] == INFN_ABn ||
+		dynamics->cell_state[i][j] == INFN_ABr)
 		dynamics->infected_nonprodcells++;
-	    if (dynamics->cell_state[i][j]==INFP)
+	    if (dynamics->cell_state[i][j] == INFN_A)
+		dynamics->infn_A++;
+	    if (dynamics->cell_state[i][j] == INFN_B)
+		dynamics->infn_B++;
+	    if (dynamics->cell_state[i][j] == INFN_ABn)
+		dynamics->infn_ABn++;
+	    if (dynamics->cell_state[i][j] == INFN_ABr)
+		dynamics->infn_ABr++;
+	    if (dynamics->cell_state[i][j] == INFP_A ||
+		dynamics->cell_state[i][j] == INFP_B ||
+		dynamics->cell_state[i][j] == INFP_ABn ||
+		dynamics->cell_state[i][j] == INFP_ABr)
 		dynamics->infected_prodcells++;
+	    if (dynamics->cell_state[i][j] == INFP_A)
+		dynamics->infp_A++;
+	    if (dynamics->cell_state[i][j] == INFP_B)
+		dynamics->infp_B++;
+	    if (dynamics->cell_state[i][j] == INFP_ABn)
+		dynamics->infp_ABn++;
+	    if (dynamics->cell_state[i][j] == INFP_ABr)
+		dynamics->infp_ABr++;
 	    if (dynamics->cell_state[i][j]>=DEAD)
 		dynamics->dead_cells++;
 	    if (dynamics->t_cell_state[i][j]==PAT_HSV)
@@ -2782,6 +3072,26 @@ void compute_totals(global_settings *settings,global_parameters *parameters,glob
 	    if (dynamics->t_cell_state[i][j]==DEAD)
 		dynamics->dead_tcells++;
 	}
+	for (int i=0; i<settings->L;i++)
+	    for (int j=0; j<settings->L;j++)
+	    {
+		bool has_virus = false;
+		for (int s=0; s < NUM_STRAINS; s++)
+		{
+		    dynamics->virions+=dynamics->viral_matrix[s][i][j];
+		    if (dynamics->viral_matrix[s][i][j] > 0)
+			has_virus=true;
+		    if (s==0)
+			dynamics->virionsA+=dynamics->viral_matrix[s][i][j];
+		    else if (s==1)
+			dynamics->virionsB+=dynamics->viral_matrix[s][i][j];
+		    else 
+			dynamics->virionsAB+=dynamics->viral_matrix[s][i][j];
+		}
+		if (has_virus)
+		    dynamics->viral_cells++;
+	    }
+
 	if (dynamics->virions*parameters->psi > dynamics->max_vl){
 	    dynamics->max_vl=dynamics->virions*parameters->psi;
 	    dynamics->max_vl_time=dynamics->time;
@@ -2829,32 +3139,35 @@ void dump_data(global_settings *settings,global_parameters *parameters,global_dy
     }
     fclose(outF);
 
-    sprintf(temp_str,"virus_state_%d_%4.3lf.csv",
-	dynamics->runnum+1,dynamics->time);
+    for (int s=0; s < NUM_STRAINS; s++) {
+	sprintf(temp_str,"virus_state%s_%d_%4.3lf.csv",
+	    (s==0)?"A":((s==1)?"B":"AB"),dynamics->runnum+1,dynamics->time);
 
-    if (settings->dirname != NULL) {
-	output_file2=settings->dirname;
-	output_file2+="/";
-	output_file2+=temp_str;
-    }
-    else
-	output_file2=temp_str;
-
-    if((outF = fopen(output_file2.c_str(),"wt")) == NULL){
-	fprintf(stderr,"Could not open data file %s\n",output_file2.c_str());
-	exit(1);
-    }
-    for (int i=0; i<settings->L-1;i++) {
-	    fprintf(outF,"%d,",i+1);
-    }
-    fprintf(outF,"%d\n",settings->L);
-    for (int i=0; i<settings->L;i++) {
-	for (int j=0; j<settings->L-1;j++) {
-	    fprintf(outF,"%d,",dynamics->viral_matrix[i][j]);
+	if (settings->dirname != NULL) {
+	    output_file2=settings->dirname;
+	    output_file2+="/";
+	    output_file2+=temp_str;
 	}
-	fprintf(outF,"%d\n",dynamics->viral_matrix[i][settings->L-1]);
+	else
+	    output_file2=temp_str;
+
+	if((outF = fopen(output_file2.c_str(),"wt")) == NULL){
+	    fprintf(stderr,"Could not open data file %s\n",output_file2.c_str());
+	    exit(1);
+	}
+	for (int i=0; i<settings->L-1;i++) {
+		fprintf(outF,"%d,",i+1);
+	}
+	fprintf(outF,"%d\n",settings->L);
+	for (int i=0; i<settings->L;i++) {
+	    for (int j=0; j<settings->L-1;j++) {
+		fprintf(outF,"%d,",dynamics->viral_matrix[s][i][j]);
+	    }
+	    fprintf(outF,"%d\n",dynamics->viral_matrix[s][i][settings->L-1]);
+	}
+	fclose(outF);
     }
-    fclose(outF);
+
     sprintf(temp_str,"tcell_state_%d_%4.3lf.csv",
 	dynamics->runnum+1,dynamics->time);
 
@@ -2955,7 +3268,7 @@ void dump_data(global_settings *settings,global_parameters *parameters,global_dy
 	    dynamics->runnum+1,dynamics->time, settings->plot_cytokines,
 	    parameters->cyt_prot_expiration, cyt_inf_ic50, cyt_sus_ic50,
 	    (dynamics->max_vl>0)?log10(dynamics->max_vl):0, 
-	    dynamics->max_vl_time,settings->panels,settings->cyto_act,
+	    dynamics->max_vl_time,settings->plot_trms,settings->cyto_act,
 	    cyt_inf, cyt_sus);
 
 	command+= temp_str;
@@ -3006,13 +3319,24 @@ void output_results(int runnum, global_settings *settings,
 	    fprintf(settings->dataF1,",time");
 	    fprintf(settings->dataF1,",susceptible");
 	    fprintf(settings->dataF1,",inf_nonprod");
+	    fprintf(settings->dataF1,",infn_A");
+	    fprintf(settings->dataF1,",infn_B");
+	    fprintf(settings->dataF1,",infn_ABn");
+	    fprintf(settings->dataF1,",infn_ABr");
 	    fprintf(settings->dataF1,",inf_prod");
+	    fprintf(settings->dataF1,",infp_A");
+	    fprintf(settings->dataF1,",infp_B");
+	    fprintf(settings->dataF1,",infp_ABn");
+	    fprintf(settings->dataF1,",infp_ABr");
 	    fprintf(settings->dataF1,",dead_cells");
 	    fprintf(settings->dataF1,",pat hsv Trm");
 	    fprintf(settings->dataF1,",act hsv Trm");
 	    fprintf(settings->dataF1,",pat byst Trm");
 	    fprintf(settings->dataF1,",act byst Trm");
 	    fprintf(settings->dataF1,",virions");
+	    fprintf(settings->dataF1,",A virions");
+	    fprintf(settings->dataF1,",B virions");
+	    fprintf(settings->dataF1,",AB virions");
 	    fprintf(settings->dataF1,",log virions");
 	    fprintf(settings->dataF1,",max log VL");
 	    fprintf(settings->dataF1,",max time");
@@ -3050,13 +3374,24 @@ void output_results(int runnum, global_settings *settings,
 	    fprintf(settings->dataF1,",%4.3lf", dynamics->time);
 	    fprintf(settings->dataF1,",%d", dynamics->susceptible_cells);
 	    fprintf(settings->dataF1,",%d", dynamics->infected_nonprodcells);
+	    fprintf(settings->dataF1,",%d", dynamics->infn_A);
+	    fprintf(settings->dataF1,",%d", dynamics->infn_B);
+	    fprintf(settings->dataF1,",%d", dynamics->infn_ABn);
+	    fprintf(settings->dataF1,",%d", dynamics->infn_ABr);
 	    fprintf(settings->dataF1,",%d", dynamics->infected_prodcells);
+	    fprintf(settings->dataF1,",%d", dynamics->infp_A);
+	    fprintf(settings->dataF1,",%d", dynamics->infp_B);
+	    fprintf(settings->dataF1,",%d", dynamics->infp_ABn);
+	    fprintf(settings->dataF1,",%d", dynamics->infp_ABr);
 	    fprintf(settings->dataF1,",%d", dynamics->dead_cells);
 	    fprintf(settings->dataF1,",%d", dynamics->pat_hsv);
 	    fprintf(settings->dataF1,",%d", dynamics->act_hsv);
 	    fprintf(settings->dataF1,",%d", dynamics->pat_byst);
 	    fprintf(settings->dataF1,",%d", dynamics->act_byst);
 	    fprintf(settings->dataF1,",%d", (int)(dynamics->virions*parameters->psi));
+	    fprintf(settings->dataF1,",%d", (int)(dynamics->virionsA*parameters->psi));
+	    fprintf(settings->dataF1,",%d", (int)(dynamics->virionsB*parameters->psi));
+	    fprintf(settings->dataF1,",%d", (int)(dynamics->virionsAB*parameters->psi));
 	    fprintf(settings->dataF1,",%4.3lf", (dynamics->virions*parameters->psi>0)?log10(dynamics->virions*parameters->psi):0);
 	    fprintf(settings->dataF1,",%4.3lf", (dynamics->max_vl>0)?log10(dynamics->max_vl):0);
 	    fprintf(settings->dataF1,",%4.3lf", dynamics->max_vl_time);

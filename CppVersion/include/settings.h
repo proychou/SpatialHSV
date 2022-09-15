@@ -4,6 +4,8 @@
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 #define MAX(a,b) (((a) > (b)) ? (a) : (b))
 
+#define NUM_STRAINS 3 
+
 struct global_settings {
 	gsl_rng * ur;		// Ramdom number generator
 
@@ -19,7 +21,6 @@ struct global_settings {
 	int Runs;						//number of patients or episodes to simulate
 	int sim_length;						//Length of simulation in hours
 
-	int panels;     //Number of panels to draw when plotting w/ R (passed arg)
 	int save_plot_data;     //Save state data for R-style plots
 	int save_ratio_data;    //Save running e/t data for R-style plots
 	int save_state_files;   //Save unning tate files during R-style plotting
@@ -43,6 +44,9 @@ struct global_settings {
 	int place_virus_type;
 	int place_virus_num;
 	int start_plaques;		// number of cells either infected or with virus at the start
+	int max_start_strains;		// number of strains to seed (either virions or infected cells)
+	int start_neur_strain;		// strains to begin seeding from neuron (either virions or infected cells)
+	int max_neur_drips;		// number of drips to allow (virus or infected cells)
 	
 	//TRM 
 	int trm_init; //random or gaussian
@@ -72,6 +76,7 @@ struct global_settings {
 	int et_num_clusters;
 	int et_num_samples;
 
+	int plot_trms;
 	int plot_cytokines;
 };
 
@@ -81,12 +86,12 @@ struct global_parameters {
 	
 	//Uninfected cells
 	double uninf_cell_death;	//Rate of uninfected cell death 
-	double infectivity_free;				//Infectivity (per virus per cell per day), will get multiplied by number of free viruses at the site
+	double infectivity_free[NUM_STRAINS];				//Infectivity (per virus per cell per day), will get multiplied by number of free viruses at the site
 	int max_tcell_div; 					//Max number of t cell divisions
 	double cell_div; 					//Rate of generation of new susceptible cells (repop of empty sites)
 	
 	//Infected cells
-	double inf_cell_death;			//Rate of infected cell death due to infection
+	double inf_cell_death[NUM_STRAINS];			//Rate of infected cell death due to infection
 	double viral_lag;						  //Rate at which inf non-producer becomes viral producing cell (per cell per day)
 	int vir_prod_rate_mean;	//Rate at which an infected cell produces free virus (per cell per day, mean)
 	
@@ -94,7 +99,11 @@ struct global_parameters {
 	double diff_rate_virus; 						  //Rate of diffusion of free virus (sites moved per day, depends on diffusivity, size of virion, viscosity of medium, etc)
 	double freevirus_decay;		//Rate of decay of free virus (per day)
 	double neur_drip;						  //Rate of arrival of virus from neurons (per site per day)
+	double neur_infect;						  //Rate of cellular infection from neurons (per site per day)
 	double psi;	//fraction of virus picked up by swab
+
+	double prob_recomb;	// probability of co-infection resulting in recombinant virus
+	double prob_coinfect;	// probability of co-infection
 
 	//T-cells
 	double hsv_fract;	//fraction of Trms that are hsv specific (vs byst)
@@ -154,9 +163,20 @@ struct global_dynamics {
 	int runnum;	//number of current run (patient)
 	double time;
 	int virions;
+	int virionsA;
+	int virionsB;
+	int virionsAB;
 	int susceptible_cells;
 	int infected_nonprodcells;
+	int infn_A;
+	int infn_B;
+	int infn_ABn;
+	int infn_ABr;
 	int infected_prodcells;
+	int infp_A;
+	int infp_B;
+	int infp_ABn;
+	int infp_ABr;
 	int dead_cells;
 	int pat_hsv;
 	int act_hsv;
@@ -211,10 +231,10 @@ struct global_dynamics {
 	int **t_cell_potential; // how many times can this t-cell further divide
 	double **t_cell_cyto_dur;  // how many more days can this cell secrete cytokines
 
-	int **viral_matrix;
+	int ***viral_matrix;
 	double **cytokine_matrix;
 	
-	int **delta_viral_matrix;
+	int ***delta_viral_matrix;
 	double **delta_cytokine_matrix;
 };
 #endif
