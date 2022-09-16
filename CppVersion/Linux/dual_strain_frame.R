@@ -24,30 +24,18 @@ calc_plaque_size<-function(dead_cells,site_scale){
 #########################################################
 ### B) Reading in data and transform it into matrix format
 #########################################################
-cyt_ic50<-7.406*1.25e-4; #default
 args<-commandArgs(trailingOnly=T);
 
 run<-args[2];
 current_time<-args[3];
-plot_cytokines<-args[4];
-cyt_expiration<-as.numeric(args[5]);
-cyt_ic50<-as.numeric(args[6]);
-cyt_hill<-as.numeric(args[7]);
 max_log_vl<-as.numeric(args[8]);
 max_time<-as.numeric(args[9]);
-plot_trms<-args[10];
-cyto_act<-as.numeric(args[11]);
 
 png(paste(args[1],"snapshot_",run,"_",current_time,".png",sep=""),width = 8, height = 8, units="in",res=200);
 par(mar=c(4,4,2,6), xpd=TRUE, oma=c(1,2,0,1),cex=0.8);
 layout(matrix(c(1:4),2,2,byrow = TRUE),widths=c(1,1,1,1),heights=c(1,1,1,1));
 
 site_scale<-50; #how many microns is one site
-cyt_disp_thresh<-7.406*1.25e-4;
-#cyt_effect<-function(dose,xmid=cyt_ic50,scal=-7.458*1.25e-4) (1-((1+exp(xmid/scal))/(1+exp((xmid-dose)/scal))));
-cyt_effect<-function(dose,xmid=cyt_ic50) {
-    return ((dose)/(xmid+dose));
-}
 
 L<-125;
 
@@ -72,28 +60,9 @@ temp_grid[cell_state%in%c(8)]<-6;
 temp_grid[cell_state%in%c(9)]<-7;
 temp_grid[cell_state%in%c(10)]<-8;
 temp_grid[cell_state%in%c(11)]<-9;
-if (plot_cytokines >0 & plot_trms >0) {
-  cyt_death<-sum(cell_state==12);
-  cols<-c('papayawhip','pink','lightblue','lavender','yellow','red','blue','purple','orange','black','green','gray');                     
-  temp_grid[cell_state%in%c(12)]<-10;
-  temp_grid[cell_state%in%c(13)]<-11;
-  leg_text<-c("Susc","preA","preB","preA|B","preAB","A","B","A|B","AB","Dead","Ckill","Tkill")
-  num_breaks<-11
-} else if (plot_cytokines == 0 & plot_trms >0) {
-  cols<-c('papayawhip','pink','lightblue','lavender','yellow','red','blue','purple','orange','black','gray');                     
-  temp_grid[cell_state%in%c(13)]<-10;
-  leg_text<-c("Susc","preA","preB","preA|B","preAB","A","B","A|B","AB","Dead","Tkill")
-  num_breaks<-10
-} else if (plot_cytokines > 0 & plot_trms == 0) {
-  cols<-c('papayawhip','pink','lightblue','lavender','yellow','red','blue','purple','orange','black','green');                     
-  temp_grid[cell_state%in%c(12)]<-10;
-  leg_text<-c("Susc","preA","preB","preA|B","preAB","A","B","A|B","AB","Dead","Ckill")
-  num_breaks<-10
-} else {
-  cols<-c('papayawhip','pink','lightblue','lavender','yellow','red','blue','purple','orange','black');                     
-  leg_text<-c("Susc","preA","preB","preA|B","preAB","A","B","A|B","AB","Dead")
-  num_breaks<-9
-}
+cols<-c('papayawhip','pink','lightblue','lavender','yellow','red','blue','purple','orange','black');                     
+leg_text<-c("Susc","preA","preB","preA|B","preAB","A","B","A|B","AB","Dead")
+num_breaks<-9
 
 image(temp_grid,col=cols,breaks=c(-1:num_breaks),xaxt='n',yaxt='n',main='Cells', asp=1)
 #leg_text<-c("empty","susc","pre-prod","prod inf","died","cyt killed","Trm killed")
@@ -147,6 +116,7 @@ if(virions==0){
 #Panel 3: Time history: cells
 #read in results.csv
 results_file<-paste(args[1],"results.csv",sep="");
+#run,time,susceptible,inf_nonprod,infn_A,infn_B,infn_ABn,infn_ABr,inf_prod,infp_A,infp_B,infp_ABn,infp_ABr,dead_cells,virions,A virions,B virions,AB virions,log virions,max log VL,max time,viral_cells,first sampled log VL,first sampled time,max sampled log VL,max sampled time,plaque size,total infected,log total virus
 print(paste("Reading file",results_file));
 data <- read.csv(results_file, comment.char="#");
 
@@ -178,13 +148,13 @@ legend("topright", inset=c(-0.5, 0),leg_text,col=cols,lty=c(1:9),bty='n',ncol=1)
 
 #Panel 3: Time history: virus
 #read in results.csv
-virusA <- data[,20]
+virusA <- data[,16]
 for (i in 1:length(virusA)) if (virusA[i] != 0) virusA[i] = log(virusA[i])/log(10);
 
-virusB <- data[,21]
+virusB <- data[,17]
 for (i in 1:length(virusB)) if (virusB[i] != 0) virusB[i] = log(virusB[i])/log(10);
 
-virusAB <- data[,22]
+virusAB <- data[,18]
 for (i in 1:length(virusAB)) if (virusAB[i] != 0) virusAB[i] = log(virusAB[i])/log(10);
 
 cols<-c('red','blue','orange');                     
@@ -199,4 +169,4 @@ mtext(paste('Episode',run,' Time =',formatC(as.numeric(current_time),format='f',
 
 dev.off()
 
-print(paste("Inf cells =",infn+infp,"Log10 VL =",format(round(log_virus,2)),"ic50=",formatC(cyt_ic50,format='e',digits=2),sep=" "));
+print(paste("Inf cells =",infn+infp,"Log10 VL =",format(round(log_virus,2)),sep=" "));
