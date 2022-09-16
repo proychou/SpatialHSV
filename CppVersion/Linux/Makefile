@@ -40,7 +40,7 @@ MOVE          = mv -f
 CHK_DIR_EXISTS= test -d
 MKDIR         = mkdir -p
 
-all: Spatial_HSV
+all: Spatial_HSV_full Spatial_HSV
 
 ####### Output directory
 
@@ -52,6 +52,8 @@ SOURCES       = ../src/Spatial_HSV.cpp
 
 
 OBJECTS       = Spatial_HSV.o
+
+FULL_OBJECTS       = Spatial_HSV_full.o
 
 first: all
 ####### Implicit rules
@@ -77,15 +79,36 @@ first: all
 
 ####### Compile
 
+../include/Spatial_HSV.h: ../include/full_spatial.h ./clean_headers.sh
+	rm -f "$@"
+	./clean_headers.sh
+	$(COPY) ../include/clean_spatial.h ../include/Spatial_HSV.h
+	chmod -w ../include/Spatial_HSV.h
+
+../include/settings.h: ../include/full_settings.h ./clean_headers.sh
+	rm -f "$@"
+	./clean_headers.sh
+	$(COPY) ../include/clean_settings.h ../include/settings.h
+	chmod -w ../include/settings.h
+
+../src/Spatial_HSV.cpp: ../src/full_spatial.cpp ./clean_spatial.sh ../include/settings.h ../include/Spatial_HSV.h
+	rm -f "$@"
+	./clean_spatial.sh
+	$(COPY) ../src/clean_spatial.cpp ../src/Spatial_HSV.cpp
+
+Spatial_HSV_full.o: ../src/full_spatial.cpp ../include/full_settings.h ../include/full_spatial.h
+	$(COPY) ../include/full_settings.h ../include/settings.h
+	$(COPY) ../include/full_spatial.h ../include/Spatial_HSV.h
+	$(CXX) -c $(CXXFLAGS) -DTCELL_CODE -DCYTOKINE_CODE $(INCPATH) -o Spatial_HSV_full.o ../src/full_spatial.cpp
+
 Spatial_HSV.o: ../src/Spatial_HSV.cpp
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o Spatial_HSV.o ../src/Spatial_HSV.cpp
 
+Spatial_HSV_full:  $(FULL_OBJECTS)  
+	$(LINK) $(LFLAGS) -o Spatial_HSV_full $(FULL_OBJECTS) $(OBJCOMP) $(LIBS)
 
 Spatial_HSV:  $(OBJECTS)  
 	$(LINK) $(LFLAGS) -o Spatial_HSV $(OBJECTS) $(OBJCOMP) $(LIBS)
-
-Spatial_HSV2:  $(OBJECTS)  
-	$(LINK) $(LFLAGS) -o Spatial_HSV2 $(OBJECTS) $(OBJCOMP) $(LIBS)
 
 lifespan:  lifespan.o
 	$(LINK) $(LFLAGS) -o lifespan lifespan.o $(LIBS)
